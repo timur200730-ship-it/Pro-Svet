@@ -635,3 +635,57 @@ button { font: inherit; color: inherit; }
   opacity: 0.3;
   cursor: default;
 }
+/* ========== СРАВНЕНИЕ СТРАТЕГИЙ ========== */
+.comparison-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line);
+}
+.cmp-sub {
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+/* ========== ТАБЛИЦА АМОРТИЗАЦИИ ========== */
+.details-scroll {
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev-2);
+  margin-top: 10px;
+}
+.amort-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: right;
+}
+.amort-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.amort-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  white-space: nowrap;
+}
+.amort-table th:first-child,
+.amort-table td:first-child {
+  text-align: left;
+  color: var(--text-mute);
+}
+.amort-table tr:last-child td {
+  border-bottom: none;
+}
+.amort-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
