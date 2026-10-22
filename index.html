@@ -108,7 +108,16 @@
         </div>
 
         <div class="grid-2">
-                  <!-- Сравнение стратегий -->
+          <div class="card mini">
+            <span class="stat-label">Переплата процентов</span>
+            <span class="stat-value num" id="totalInterest">0 ₽</span>
+          </div>
+          <div class="card mini">
+            <span class="stat-label">Всего выплат</span>
+            <span class="stat-value num" id="totalPaid">0 ₽</span>
+          </div>
+        </div>
+
         <div class="section-head">
           <h2>Сравнение стратегий</h2>
         </div>
@@ -124,15 +133,6 @@
             <span class="cmp-sub num" id="cmpSnowballInterest">—</span>
           </div>
         </div>
-          <div class="card mini">
-            <span class="stat-label">Переплата процентов</span>
-            <span class="stat-value num" id="totalInterest">0 ₽</span>
-          </div>
-          <div class="card mini">
-            <span class="stat-label">Всего выплат</span>
-            <span class="stat-value num" id="totalPaid">0 ₽</span>
-          </div>
-        </div>
 
         <div class="section-head">
           <h2>Рекомендации</h2>
@@ -142,18 +142,94 @@
         </ul>
 
         <div class="section-head">
-          <h2>График</h2>
+          <h2>График остатка</h2>
         </div>
         <div class="chart-wrap card">
           <canvas id="chart" width="600" height="220" aria-label="График остатка долга по месяцам"></canvas>
           <p class="empty-inline" id="chartEmpty">Появится после расчёта.</p>
         </div>
+
         <div class="section-head">
-          <h2>Сравнение стратегий</h2>
+          <h2>Лавина vs Снежный ком</h2>
         </div>
         <div class="chart-wrap card">
           <canvas id="comparisonChart" width="600" height="220" aria-label="Сравнение стратегий"></canvas>
         </div>
+      </section>
+
+      <!-- КРЕДИТНЫЕ КАЛЬКУЛЯТОРЫ -->
+      <section class="screen" data-screen="credits">
+        <div class="section-head"><h2>Кредитные калькуляторы</h2></div>
+        
+        <div class="segmented" id="creditTypeSeg" style="margin-bottom:16px;">
+          <button class="seg is-active" data-type="mortgage" type="button">Ипотека</button>
+          <button class="seg" data-type="auto" type="button">Автокредит</button>
+          <button class="seg" data-type="early" type="button">Досрочное</button>
+        </div>
+
+        <!-- Ипотека -->
+        <div id="calcMortgage" class="calc-panel">
+          <div class="card">
+            <label class="field"><span class="field-label">Сумма кредита</span><div class="field-input"><input type="number" id="mortSum" placeholder="3000000" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Ставка, % год.</span><div class="field-input"><input type="number" id="mortRate" placeholder="12" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Срок, лет</span><div class="field-input"><input type="number" id="mortYears" placeholder="20" /></div></label>
+            <button class="btn btn-primary" id="calcMortBtn" style="margin-top:16px;">Рассчитать</button>
+          </div>
+          <div class="card" id="mortResult" hidden>
+            <div class="stat"><span class="stat-label">Ежемесячный платёж</span><span class="stat-value num" id="mortMonthly">—</span></div>
+            <div class="stat" style="margin-top:8px;"><span class="stat-label">Переплата</span><span class="stat-value num" id="mortOverpay">—</span></div>
+          </div>
+        </div>
+
+        <!-- Автокредит -->
+        <div id="calcAuto" class="calc-panel" hidden>
+          <div class="card">
+            <label class="field"><span class="field-label">Сумма кредита</span><div class="field-input"><input type="number" id="autoSum" placeholder="1000000" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Ставка, % год.</span><div class="field-input"><input type="number" id="autoRate" placeholder="15" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Срок, лет</span><div class="field-input"><input type="number" id="autoYears" placeholder="5" /></div></label>
+            <button class="btn btn-primary" id="calcAutoBtn" style="margin-top:16px;">Рассчитать</button>
+          </div>
+          <div class="card" id="autoResult" hidden>
+            <div class="stat"><span class="stat-label">Ежемесячный платёж</span><span class="stat-value num" id="autoMonthly">—</span></div>
+            <div class="stat" style="margin-top:8px;"><span class="stat-label">Переплата</span><span class="stat-value num" id="autoOverpay">—</span></div>
+          </div>
+        </div>
+
+        <!-- Досрочное погашение -->
+        <div id="calcEarly" class="calc-panel" hidden>
+          <div class="card">
+            <label class="field"><span class="field-label">Остаток долга</span><div class="field-input"><input type="number" id="earlyBalance" placeholder="500000" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Ставка, % год.</span><div class="field-input"><input type="number" id="earlyRate" placeholder="18" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Текущий платёж</span><div class="field-input"><input type="number" id="earlyPayment" placeholder="15000" /></div></label>
+            <label class="field" style="margin-top:12px;"><span class="field-label">Сумма досрочного</span><div class="field-input"><input type="number" id="earlyExtra" placeholder="100000" /></div></label>
+            <button class="btn btn-primary" id="calcEarlyBtn" style="margin-top:16px;">Рассчитать</button>
+          </div>
+          <div class="card" id="earlyResult" hidden>
+            <div class="stat"><span class="stat-label">Новый срок</span><span class="stat-value num" id="earlyNewTerm">—</span></div>
+            <div class="stat" style="margin-top:8px;"><span class="stat-label">Экономия на процентах</span><span class="stat-value num" id="earlySave">—</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- АНАЛИТИКА MOEX -->
+      <section class="screen" data-screen="analytics">
+        <div class="section-head">
+          <h2>Аналитика MOEX</h2>
+          <span class="pill" id="analyticsCount">0</span>
+        </div>
+        <p class="hint">Анализ 50 наиболее ликвидных российских акций и ОФЗ. Данные с задержкой ~15 минут.</p>
+        
+        <button class="btn btn-primary" id="runAnalyticsBtn" type="button" style="margin-bottom: 16px;">
+          <span>⚡</span> Запустить анализ
+        </button>
+        
+        <div class="empty" id="analyticsEmpty">
+          <div class="empty-glyph">📊</div>
+          <p class="empty-title">Готов к анализу</p>
+          <p class="empty-text">Нажми кнопку выше, чтобы получить рекомендации по 50 бумагам.</p>
+        </div>
+        
+        <ul class="analytics-list" id="analyticsList" hidden></ul>
       </section>
 
       <!-- НАСТРОЙКИ -->
@@ -161,15 +237,7 @@
         <div class="section-head">
           <h2>Настройки</h2>
         </div>
-        <div class="section-head">
-          <h2>Приложение</h2>
-        </div>
-        <div class="card list" id="installBox" hidden>
-          <button class="row row-btn" id="installBtn" type="button">
-            <span class="row-label" style="color:var(--accent)">Установить на устройство</span>
-            <span class="row-chev">↓</span>
-          </button>
-        </div>
+
         <div class="card list">
           <label class="row">
             <span class="row-label">Валюта</span>
@@ -180,13 +248,20 @@
               <option value="KZT">₸ — тенге</option>
             </select>
           </label>
-
           <div class="row">
             <span class="row-label">Тема</span>
-            <span class="row-control" style="padding:0;border:none;background:transparent;">
-              <button class="btn btn-ghost btn-sm" id="themeBtn2" type="button">Переключить</button>
-            </span>
+            <button class="btn btn-ghost btn-sm" id="themeBtn2" type="button">Переключить</button>
           </div>
+        </div>
+
+        <div class="section-head">
+          <h2>Приложение</h2>
+        </div>
+        <div class="card list" id="installBox" hidden>
+          <button class="row row-btn" id="installBtn" type="button">
+            <span class="row-label" style="color:var(--accent)">Установить на устройство</span>
+            <span class="row-chev">↓</span>
+          </button>
         </div>
 
         <div class="section-head">
@@ -211,48 +286,32 @@
         <p class="hint">Данные хранятся только на этом устройстве. Никаких серверов и аккаунтов.</p>
         <p class="hint hint-dim">Просвет · личный проект · не является финансовой рекомендацией.</p>
       </section>
-      <!-- АНАЛИТИКА -->
-      <section class="screen" data-screen="analytics">
-        <div class="section-head">
-          <h2>Аналитика MOEX</h2>
-          <span class="pill" id="analyticsCount">0</span>
-        </div>
-        <p class="hint">Анализ 50 наиболее ликвидных российских акций и ОФЗ. Данные с задержкой ~15 минут.</p>
-        
-        <button class="btn btn-primary" id="runAnalyticsBtn" type="button" style="margin-bottom: 16px;">
-          <span>⚡</span> Запустить анализ
-        </button>
-        
-        <div class="empty" id="analyticsEmpty">
-          <div class="empty-glyph">📊</div>
-          <p class="empty-title">Готов к анализу</p>
-          <p class="empty-text">Нажми кнопку выше, чтобы получить рекомендации по 50 бумагам.</p>
-        </div>
-        
-        <ul class="analytics-list" id="analyticsList" hidden></ul>
-      </section>
+
     </main>
 
-    <nav class="tabbar" aria-label="Разделы">
+    <nav class="tabbar" aria-label="Разделы" style="grid-template-columns: repeat(6, 1fr); gap: 2px;">
       <button class="tab is-active" data-tab="debts" type="button">
-        <span class="tab-dot"></span><span class="tab-text">Долги</span>
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Долги</span>
       </button>
       <button class="tab" data-tab="strategy" type="button">
-        <span class="tab-dot"></span><span class="tab-text">Стратегия</span>
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Стратегия</span>
       </button>
       <button class="tab" data-tab="result" type="button">
-        <span class="tab-dot"></span><span class="tab-text">Результат</span>
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Результат</span>
+      </button>
+      <button class="tab" data-tab="credits" type="button">
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Кредиты</span>
       </button>
       <button class="tab" data-tab="analytics" type="button">
-        <span class="tab-dot"></span><span class="tab-text">Аналитика</span>
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Аналитика</span>
       </button>
       <button class="tab" data-tab="settings" type="button">
-        <span class="tab-dot"></span><span class="tab-text">Настройки</span>
+        <span class="tab-dot"></span><span class="tab-text" style="font-size:10px;">Настройки</span>
       </button>
     </nav>
   </div>
 
-   <!-- МОДАЛКА ДОЛГА -->
+  <!-- МОДАЛКА ДОЛГА -->
   <div class="modal-backdrop" id="debtModal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modal-head">
@@ -293,6 +352,7 @@
       </form>
     </div>
   </div>
+
   <!-- МОДАЛКА ДЕТАЛИЗАЦИИ -->
   <div class="modal-backdrop" id="detailsModal" hidden>
     <div class="modal" style="max-width: 600px;">
@@ -319,6 +379,10 @@
       </div>
     </div>
   </div>
+
+  <!-- TOAST УВЕДОМЛЕНИЯ -->
+  <div class="toast-container" id="toastContainer"></div>
+
   <script src="js/engine.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/app.js"></script>
