@@ -7,9 +7,14 @@
   "theme_color": "#0b0b0e",
   "icons": [
     {
-      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjMTQxNDFhIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMjAiIGZpbGw9IiNkOWI0NmEiLz48L3N2Zz4=",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "https://ui-avatars.com/api/?name=P&background=14141a&color=d9b46a&size=192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://ui-avatars.com/api/?name=P&background=14141a&color=d9b46a&size=512",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }
