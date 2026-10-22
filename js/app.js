@@ -496,9 +496,9 @@
       persist();
       syncInputs();
       render();
-      alert("Импорт выполнен.");
+      showToast("Данные успешно загружены");
     } catch (err) {
-      alert("Ошибка импорта: " + err.message);
+      showToast(err.message, "error");
     }
   });
   $("#resetBtn").addEventListener("click", () => {
@@ -542,3 +542,32 @@
     }, 150);
   });
 })();
+  // --- PWA: Перехват события установки ---
+  let deferredPrompt = null;
+  const installBox = $("#installBox");
+  const installBtn = $("#installBtn");
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Предотвращаем автоматический показ мини-инфо-бара
+    e.preventDefault();
+    deferredPrompt = e;
+    // Показываем нашу красивую кнопку в настройках
+    if (installBox) installBox.hidden = false;
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        showToast("Просвет установлен!");
+      }
+      deferredPrompt = null;
+      installBox.hidden = true;
+    });
+    window.addEventListener('appinstalled', () => {
+    showToast("Приложение добавлено на экран!");
+    if (installBox) installBox.hidden = true;
+  });
+  }
