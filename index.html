@@ -205,7 +205,26 @@
         <p class="hint">Данные хранятся только на этом устройстве. Никаких серверов и аккаунтов.</p>
         <p class="hint hint-dim">Просвет · личный проект · не является финансовой рекомендацией.</p>
       </section>
-
+      <!-- АНАЛИТИКА -->
+      <section class="screen" data-screen="analytics">
+        <div class="section-head">
+          <h2>Аналитика MOEX</h2>
+          <span class="pill" id="analyticsCount">0</span>
+        </div>
+        <p class="hint">Анализ 50 наиболее ликвидных российских акций и ОФЗ. Данные с задержкой ~15 минут.</p>
+        
+        <button class="btn btn-primary" id="runAnalyticsBtn" type="button" style="margin-bottom: 16px;">
+          <span>⚡</span> Запустить анализ
+        </button>
+        
+        <div class="empty" id="analyticsEmpty">
+          <div class="empty-glyph">📊</div>
+          <p class="empty-title">Готов к анализу</p>
+          <p class="empty-text">Нажми кнопку выше, чтобы получить рекомендации по 50 бумагам.</p>
+        </div>
+        
+        <ul class="analytics-list" id="analyticsList" hidden></ul>
+      </section>
     </main>
 
     <nav class="tabbar" aria-label="Разделы">
@@ -217,6 +236,9 @@
       </button>
       <button class="tab" data-tab="result" type="button">
         <span class="tab-dot"></span><span class="tab-text">Результат</span>
+      </button>
+      <button class="tab" data-tab="analytics" type="button">
+        <span class="tab-dot"></span><span class="tab-text">Аналитика</span>
       </button>
       <button class="tab" data-tab="settings" type="button">
         <span class="tab-dot"></span><span class="tab-text">Настройки</span>
