@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Просвет — спокойный путь к нулю долгов</title>
+  <meta name="description" content="Личный калькулятор закрытия долгов. Всё считается и хранится на устройстве." />
+  <meta name="theme-color" content="#0b0b0e" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>Просвет</strong>
+          <small>к нулю долгов</small>
+        </div>
+      </div>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Сменить тему">
+        <span class="theme-icon" aria-hidden="true">◐</span>
+      </button>
+    </header>
+
+    <main class="screens" id="screens">
+
+      <!-- ДОЛГИ -->
+      <section class="screen is-active" data-screen="debts">
+        <div class="card summary">
+          <div class="summary-row">
+            <div class="stat">
+              <span class="stat-label">Общий долг</span>
+              <span class="stat-value num" id="sumTotal">0 ₽</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Мин. платежи</span>
+              <span class="stat-value num" id="sumMin">0 ₽</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Ср. ставка</span>
+              <span class="stat-value num" id="sumRate">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h2>Мои долги</h2>
+          <span class="pill" id="debtCount">0</span>
+        </div>
+
+        <div class="empty" id="debtsEmpty">
+          <div class="empty-glyph">∅</div>
+          <p class="empty-title">Пока пусто</p>
+          <p class="empty-text">Добавь первый долг — карту, кредит, рассрочку. Всё останется только у тебя на устройстве.</p>
+        </div>
+
+        <ul class="debt-list" id="debtList" hidden></ul>
+
+        <button class="btn btn-primary" id="addDebtBtn" type="button">
+          <span>+</span> Добавить долг
+        </button>
+      </section>
+
+      <!-- СТРАТЕГИЯ -->
+      <section class="screen" data-screen="strategy">
+        <div class="section-head">
+          <h2>Стратегия</h2>
+        </div>
+
+        <div class="segmented" role="tablist" id="strategySeg">
+          <button class="seg is-active" data-strategy="avalanche" type="button">Лавина</button>
+          <button class="seg" data-strategy="snowball" type="button">Снежный ком</button>
+          <button class="seg" data-strategy="custom" type="button">Свой порядок</button>
+        </div>
+
+        <p class="hint" id="strategyHint">
+          Лавина: сначала самый дорогой долг по ставке. Математически выгоднее всего.
+        </p>
+
+        <div class="card">
+          <label class="field">
+            <span class="field-label">Дополнительный платёж в месяц</span>
+            <div class="field-input">
+              <input type="number" id="extraPayment" inputmode="decimal" min="0" step="100" placeholder="0" />
+              <span class="field-suffix">₽</span>
+            </div>
+          </label>
+          <p class="field-hint">Сколько сверх минимальных платежей готов вносить.</p>
+        </div>
+
+        <div class="empty">
+          <div class="empty-glyph">◔</div>
+          <p class="empty-title">Сначала добавь долги</p>
+          <p class="empty-text">Когда появится список, здесь покажем порядок закрытия.</p>
+        </div>
+      </section>
+
+      <!-- РЕЗУЛЬТАТ -->
+      <section class="screen" data-screen="result">
+        <div class="card freedom">
+          <span class="freedom-label">Свобода от долгов</span>
+          <span class="freedom-value num" id="freedomDate">—</span>
+          <span class="freedom-sub num" id="freedomMonths">0 месяцев</span>
+        </div>
+
+        <div class="grid-2">
+          <div class="card mini">
+            <span class="stat-label">Переплата процентов</span>
+            <span class="stat-value num" id="totalInterest">0 ₽</span>
+          </div>
+          <div class="card mini">
+            <span class="stat-label">Всего выплат</span>
+            <span class="stat-value num" id="totalPaid">0 ₽</span>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h2>Рекомендации</h2>
+        </div>
+        <ul class="tips" id="tips">
+          <li class="tip tip-mute">Добавь долги — здесь появятся расчётные подсказки.</li>
+        </ul>
+
+        <div class="section-head">
+          <h2>График</h2>
+        </div>
+        <div class="chart-wrap card">
+          <canvas id="chart" width="600" height="220" aria-label="График остатка долга по месяцам"></canvas>
+          <p class="empty-inline" id="chartEmpty">Появится после расчёта.</p>
+        </div>
+      </section>
+
+      <!-- НАСТРОЙКИ -->
+      <section class="screen" data-screen="settings">
+        <div class="section-head">
+          <h2>Настройки</h2>
+        </div>
+
+        <div class="card list">
+          <label class="row">
+            <span class="row-label">Валюта</span>
+            <select id="currencySel" class="row-control">
+              <option value="RUB">₽ — рубль</option>
+              <option value="USD">$ — доллар</option>
+              <option value="EUR">€ — евро</option>
+              <option value="KZT">₸ — тенге</option>
+            </select>
+          </label>
+
+          <label class="row">
+            <span class="row-label">Тема</span>
+            <span class="row-control">
+              <button class="btn btn-ghost btn-sm" id="themeBtn2" type="button">Переключить</button>
+            </span>
+          </label>
+        </div>
+
+        <div class="section-head">
+          <h2>Данные</h2>
+        </div>
+        <div class="card list">
+          <button class="row row-btn" id="exportBtn" type="button">
+            <span class="row-label">Экспорт в JSON</span>
+            <span class="row-chev">›</span>
+          </button>
+          <button class="row row-btn" id="importBtn" type="button">
+            <span class="row-label">Импорт из JSON</span>
+            <span class="row-chev">›</span>
+          </button>
+          <input type="file" id="importFile" accept="application/json" hidden />
+          <button class="row row-btn row-danger" id="resetBtn" type="button">
+            <span class="row-label">Сбросить всё</span>
+            <span class="row-chev">›</span>
+          </button>
+        </div>
+
+        <p class="hint">Данные хранятся только на этом устройстве. Никаких серверов и аккаунтов.</p>
+        <p class="hint hint-dim">Просвет · личный проект · не является финансовой рекомендацией.</p>
+      </section>
+
+    </main>
+
+    <nav class="tabbar" aria-label="Разделы">
+      <button class="tab is-active" data-tab="debts" type="button">
+        <span class="tab-dot"></span><span class="tab-text">Долги</span>
+      </button>
+      <button class="tab" data-tab="strategy" type="button">
+        <span class="tab-dot"></span><span class="tab-text">Стратегия</span>
+      </button>
+      <button class="tab" data-tab="result" type="button">
+        <span class="tab-dot"></span><span class="tab-text">Результат</span>
+      </button>
+      <button class="tab" data-tab="settings" type="button">
+        <span class="tab-dot"></span><span class="tab-text">Настройки</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
