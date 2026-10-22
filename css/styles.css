@@ -475,43 +475,85 @@ button { font: inherit; color: inherit; }
 }
 
 /* ========== Modal ========== */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.62);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  z-index: 100;
-  animation: fade 0.15s ease;
-}
-.modal-backdrop[hidden] { display: none; }
+/* --- МОДАЛЬНОЕ ОКНО --- */
 .modal {
   background: var(--bg-elev);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   width: 100%;
   max-width: 440px;
-  padding: 20px;
+  padding: 24px; /* Чуть больше воздуха */
   box-shadow: var(--shadow);
   animation: rise 0.22s ease;
-  max-height: 92dvh;
+  max-height: 90dvh;
   overflow-y: auto;
+  overflow-x: hidden; /* Убираем горизонтальный скролл */
 }
-@keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+
 .modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
-.modal-head h3 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
-.modal-form { display: grid; gap: 14px; }
-.modal-actions { display: flex; gap: 10px; margin-top: 4px; }
-.modal-actions .btn { width: auto; margin: 0; flex: 1; }
-.modal-actions .btn-ghost { flex: 0 0 auto; }
+.modal-head h3 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+.modal-form { display: grid; gap: 16px; }
+
+/* Фикс для полей ввода, чтобы они не вылезали */
+.field-input {
+  display: flex;
+  align-items: center;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  transition: border-color 0.2s ease;
+  min-width: 0; /* Важно! */
+  width: 100%;
+}
+.field-input input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--num);
+  padding: 12px 0;
+  outline: none;
+  min-width: 0; /* Важно! */
+  width: 100%;
+}
+
+/* Красиво убираем стрелочки у числовых полей */
+.field-input input::-webkit-outer-spin-button,
+.field-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.field-input input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Кнопки в модалке */
+.modal-actions { 
+  display: flex; 
+  gap: 12px; 
+  margin-top: 8px; 
+  min-width: 0; 
+}
+.modal-actions .btn { 
+  flex: 1; /* Кнопки делят место поровну */
+  margin: 0; 
+  padding: 13px; 
+}
+.modal-actions .btn-ghost {
+  flex: 0 0 auto; /* Отмена занимает только свой размер */
+}
+
+/* Адаптивность для мобилок: если экран узкий, поля встают друг под друга */
+@media (max-width: 420px) {
+  .modal .grid-2 {
+    grid-template-columns: 1fr; 
+    gap: 14px;
+  }
+}
