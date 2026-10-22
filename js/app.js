@@ -569,5 +569,60 @@
     window.addEventListener('appinstalled', () => {
     showToast("Приложение добавлено на экран!");
     if (installBox) installBox.hidden = true;
-  });
+    // --- Аналитика MOEX ---
+  const runAnalyticsBtn = $("#runAnalyticsBtn");
+  const analyticsList = $("#analyticsList");
+  const analyticsEmpty = $("#analyticsEmpty");
+  const analyticsCount = $("#analyticsCount");
+
+  if (runAnalyticsBtn) {
+    runAnalyticsBtn.addEventListener("click", async () => {
+      runAnalyticsBtn.disabled = true;
+      runAnalyticsBtn.innerHTML = '<span>⏳</span> Анализируем...';
+      analyticsEmpty.hidden = true;
+      analyticsList.hidden = false;
+      analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--text-mute)">Загрузка данных с MOEX...</li>';
+
+      try {
+        const results = await window.MOEXAnalytics.getFullAnalysis();
+        analyticsList.innerHTML = "";
+        analyticsCount.textContent = String(results.length);
+
+        results.forEach(item => {
+          const li = document.createElement("li");
+          li.className = "analytics-card";
+
+          const changeClass = item.changePercent >= 0 ? "pos" : "neg";
+          const changeSign = item.changePercent >= 0 ? "+" : "";
+          const recClass = item.recommendation.includes("Покупать") ? "rec-buy" 
+                         : item.recommendation.includes("Избегать") ? "rec-sell" 
+                         : "rec-hold";
+
+          li.innerHTML = `
+            <div class="analytics-header">
+              <span class="analytics-ticker">${item.ticker}</span>
+              <span class="analytics-price">${item.price.toFixed(2)} ₽</span>
+              <span class="analytics-change ${changeClass}">${changeSign}${item.changePercent.toFixed(2)}%</span>
+            </div>
+            <div class="analytics-score-bar">
+              <div class="analytics-score-fill" style="width: ${item.score}%"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="analytics-rec ${recClass}">${item.recommendation}</span>
+              <span style="font-size:12px; color:var(--text-mute);">${item.horizon}</span>
+            </div>
+            <div class="analytics-reasons">${item.reasons.join(" · ")}</div>
+          `;
+          analyticsList.appendChild(li);
+        });
+      } catch (err) {
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные. Проверьте соединение.</li>';
+        showToast("Ошибка загрузки аналитики", "error");
+      } finally {
+        runAnalyticsBtn.disabled = false;
+        runAnalyticsBtn.innerHTML = '<span>⚡</span> Обновить анализ';
+      }
+    });
+  }
+    });
   }
