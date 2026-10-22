@@ -689,3 +689,41 @@ button { font: inherit; color: inherit; }
 .amort-table tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
+/* ========== TOAST УВЕДОМЛЕНИЯ ========== */
+.toast-container {
+  position: fixed;
+  bottom: 90px; /* Над таббаром */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--accent-line);
+  color: var(--text);
+  padding: 12px 20px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toast-success { border-color: var(--success); }
+.toast-error { border-color: var(--danger); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-out {
+  animation: toastOut 0.2s ease forwards;
+}
+@keyframes toastOut {
+  to { opacity: 0; transform: translateY(10px) scale(0.9); }
+}
