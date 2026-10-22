@@ -280,11 +280,47 @@
     empty.hidden = true;
     const order = Engine.orderDebts(state.debts, state.settings.strategy);
     tips.innerHTML = "";
+    
     order.forEach((d, i) => {
       const li = document.createElement("li");
       li.className = "tip";
-      li.innerHTML = `<span class="num" style="color:var(--accent)">${i + 1}.</span> <span class="order-name"></span>`;
+      
+      // Выводим стрелочки, если выбран "Свой порядок"
+      const arrows = state.settings.strategy === "custom" ? `
+        <div class="order-arrows">
+          <button class="arrow-btn" data-id="${d.id}" data-dir="up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="arrow-btn" data-id="${d.id}" data-dir="down" ${i === order.length - 1 ? 'disabled' : ''}>↓</button>
+        </div>
+      ` : '';
+
+      li.innerHTML = `<div style="display:flex; align-items:center; gap:12px;">
+        <span class="num" style="color:var(--accent); width:20px;">${i + 1}.</span> 
+        <span class="order-name" style="flex:1;"></span>
+        ${arrows}
+      </div>`;
+      
       li.querySelector(".order-name").textContent = d.name;
+      
+      // Обработчик стрелочек
+      if (arrows) {
+        li.querySelectorAll('.arrow-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            const dir = e.target.dataset.dir;
+            const idx = state.debts.findIndex(x => x.id === id);
+            if (dir === 'up' && idx > 0) {
+              [state.debts[idx - 1], state.debts[idx]] = [state.debts[idx], state.debts[idx - 1]];
+            } else if (dir === 'down' && idx < state.debts.length - 1) {
+              [state.debts[idx + 1], state.debts[idx]] = [state.debts[idx], state.debts[idx + 1]];
+            }
+            // Обновляем priority
+            state.debts.forEach((x, i) => { x.priority = i; });
+            persist();
+            render();
+          });
+        });
+      }
+      
       tips.appendChild(li);
     });
   }
