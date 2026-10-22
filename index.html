@@ -257,7 +257,32 @@
       </form>
     </div>
   </div>
-
+  <!-- МОДАЛКА ДЕТАЛИЗАЦИИ -->
+  <div class="modal-backdrop" id="detailsModal" hidden>
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-head">
+        <h3 id="detailsTitle">Детали долга</h3>
+        <button class="icon-btn" id="detailsClose" type="button">✕</button>
+      </div>
+      <div class="details-scroll">
+        <table class="amort-table">
+          <thead>
+            <tr>
+              <th>Мес</th>
+              <th>Платёж</th>
+              <th>Проценты</th>
+              <th>Тело</th>
+              <th>Остаток</th>
+            </tr>
+          </thead>
+          <tbody id="detailsBody"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions" style="margin-top: 16px;">
+        <button type="button" class="btn btn-ghost" id="detailsEditBtn">Редактировать</button>
+      </div>
+    </div>
+  </div>
   <script src="js/engine.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/app.js"></script>
