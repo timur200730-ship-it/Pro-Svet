@@ -9,6 +9,7 @@
   /* ---------- Состояние ---------- */
   let state = Storage.load();
   let lastResult = null;
+  let currentDetailDebt = null; // <-- ДОБАВИТЬ ВОТ ЭТУ СТРОКУ
 
   /* ---------- Утилиты ---------- */
   const $ = (sel, el = document) => el.querySelector(sel);
