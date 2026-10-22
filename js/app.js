@@ -564,13 +564,20 @@
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX (ПРОДВИНУТАЯ) ---------- */
-  const TICKERS = [
+  /* ---------- Аналитика MOEX (50 бумаг) ---------- */
+  
+  // 40 акций + 10 ОФЗ = 50 бумаг
+  const STOCKS = [
     "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL",
-    "YNDX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "POLY",
+    "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL",
     "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS",
-    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "OZON"
-  ]; // Оставили только акции для технического анализа
+    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "SVCB"
+  ];
+  
+  const BONDS = [
+    "SU26238RMFS4", "SU26243RMFS4", "SU26244RMFS4", "SU26245RMFS4", "SU26246RMFS4",
+    "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"
+  ];
 
   // Вспомогательные функции для технического анализа
   function calcSMA(closes, period) {
@@ -601,58 +608,84 @@
     return 100 - (100 / (1 + rs));
   }
 
-  async function fetchHistory(ticker) {
-    // Берем данные за последний год (чтобы точно было 200 торговых дней)
+  async function fetchHistory(ticker, isBond) {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);
     const fromDate = d.toISOString().split('T')[0];
     
-    const url = `https://iss.moex.com/iss/history/engines/stock/markets/shares/boards/TQBR/securities/${ticker}.json?from=${fromDate}&iss.meta=off`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const json = await res.json();
+    // Для акций TQBR, для облигаций TQOB
+    const board = isBond ? "bonds" : "shares";
+    const boardId = isBond ? "TQOB" : "TQBR";
     
-    const columns = json.history.columns;
-    const data = json.history.data;
-    const closeIdx = columns.indexOf("CLOSE");
+    const url = `https://iss.moex.com/iss/history/engines/stock/markets/${board}/boards/${boardId}/securities/${ticker}.json?from=${fromDate}&iss.meta=off`;
     
-    if (closeIdx === -1) return null;
-    
-    const closes = data.map(row => row[closeIdx]).filter(v => v !== null);
-    return closes;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const json = await res.json();
+      
+      const columns = json.history.columns;
+      const data = json.history.data;
+      const closeIdx = columns.indexOf("CLOSE");
+      
+      if (closeIdx === -1) return null;
+      
+      const closes = data.map(row => row[closeIdx]).filter(v => v !== null);
+      return closes;
+    } catch (e) {
+      return null;
+    }
   }
 
   async function fetchQuotes() {
-    const url = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata";
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-    const json = await res.json();
-    
-    const columns = json.marketdata.columns;
-    const data = json.marketdata.data;
-    const colIdx = {
-      SECID: columns.indexOf("SECID"),
-      LAST: columns.indexOf("LAST"),
-      LASTCHANGEPRCNT: columns.indexOf("LASTCHANGEPRCNT"),
-      OPEN: columns.indexOf("OPEN"),
-      HIGH: columns.indexOf("HIGH"),
-      LOW: columns.indexOf("LOW")
-    };
+    // Запрашиваем акции
+    const urlStocks = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata";
+    // Запрашиваем облигации
+    const urlBonds = "https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off&iss.only=marketdata";
 
+    const [resStocks, resBonds] = await Promise.all([fetch(urlStocks), fetch(urlBonds)]);
+    if (!resStocks.ok || !resBonds.ok) throw new Error("Ошибка загрузки данных с MOEX");
+
+    const jsonStocks = await resStocks.json();
+    const jsonBonds = await resBonds.json();
+    
     const quotes = [];
-    for (const row of data) {
-      const ticker = row[colIdx.SECID];
-      if (!TICKERS.includes(ticker)) continue;
-      const last = row[colIdx.LAST] || row[colIdx.OPEN] || 0;
+
+    // Обработка акций
+    const c1 = jsonStocks.marketdata.columns;
+    const d1 = jsonStocks.marketdata.data;
+    const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW") };
+
+    for (const row of d1) {
+      const ticker = row[idx1.SECID];
+      if (!STOCKS.includes(ticker)) continue;
+      const last = row[idx1.LAST] || row[idx1.OPEN] || 0;
       if (last === 0) continue;
       quotes.push({
-        ticker: ticker,
-        price: last,
-        changePercent: row[colIdx.LASTCHANGEPRCNT] || 0,
-        high: row[colIdx.HIGH] || 0,
-        low: row[colIdx.LOW] || 0
+        ticker, type: "stock", price: last,
+        changePercent: row[idx1.LASTCHANGEPRCNT] || 0,
+        high: row[idx1.HIGH] || 0, low: row[idx1.LOW] || 0
       });
     }
+
+    // Обработка облигаций
+    const c2 = jsonBonds.marketdata.columns;
+    const d2 = jsonBonds.marketdata.data;
+    const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW") };
+
+    for (const row of d2) {
+      const ticker = row[idx2.SECID];
+      if (!BONDS.includes(ticker)) continue;
+      const last = row[idx2.LAST] || row[idx2.OPEN] || 0;
+      if (last === 0) continue;
+      // У облигаций цена в % от номинала, умножаем на 10 для примерной цены в рублях (номинал 1000)
+      quotes.push({
+        ticker, type: "bond", price: last * 10, // Примерная цена в рублях
+        changePercent: row[idx2.LASTCHANGEPRCNT] || 0,
+        high: (row[idx2.HIGH] || 0) * 10, low: (row[idx2.LOW] || 0) * 10
+      });
+    }
+
     return quotes;
   }
 
@@ -660,6 +693,10 @@
     let score = 50;
     let reasons = [];
     let tags = [];
+
+    if (quote.type === "bond") {
+      tags.push({ text: "ОФЗ", type: "neutral" });
+    }
 
     // 1. Дневная динамика
     if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); }
@@ -672,30 +709,21 @@
       else { score -= 5; reasons.push("Ниже середины дня"); }
     }
 
-    // 3. Технический анализ (если есть история)
+    // 3. Технический анализ
     if (closes && closes.length > 20) {
       const ma200 = calcSMA(closes, 200);
       const rsi = calcRSI(closes, 14);
 
       if (ma200) {
-        if (quote.price > ma200) {
-          score += 15;
-          reasons.push("Глобальный тренд вверх (выше MA200)");
-          tags.push({ text: "> MA200", type: "good" });
-        } else {
-          score -= 15;
-          reasons.push("Глобальный тренд вниз (ниже MA200)");
-          tags.push({ text: "< MA200", type: "bad" });
-        }
+        if (quote.price > ma200) { score += 15; reasons.push("Выше MA200 (тренд вверх)"); tags.push({ text: "> MA200", type: "good" }); }
+        else { score -= 15; reasons.push("Ниже MA200 (тренд вниз)"); tags.push({ text: "< MA200", type: "bad" }); }
       }
 
       if (rsi !== null) {
         const rsiVal = Math.round(rsi);
         tags.push({ text: `RSI: ${rsiVal}`, type: rsiVal < 30 ? "good" : rsiVal > 70 ? "bad" : "neutral" });
-        
-        if (rsi < 30) { score += 15; reasons.push("RSI < 30 (перепроданность, возможен отскок)"); }
-        else if (rsi > 70) { score -= 15; reasons.push("RSI > 70 (перекупленность, риск коррекции)"); }
-        else { reasons.push(`RSI ${rsiVal} (нейтрально)`); }
+        if (rsi < 30) { score += 15; reasons.push("RSI < 30 (перепроданность)"); }
+        else if (rsi > 70) { score -= 15; reasons.push("RSI > 70 (перекупленность)"); }
       }
     } else {
       tags.push({ text: "Мало данных", type: "neutral" });
@@ -703,9 +731,9 @@
 
     score = Math.max(0, Math.min(100, score));
     let recommendation = "Держать";
-    let horizon = "Среднесрок";
+    let horizon = quote.type === "bond" ? "До погашения" : "Среднесрок";
     
-    if (score >= 70) { recommendation = "Покупать"; horizon = "Долгосрок"; }
+    if (score >= 70) { recommendation = "Покупать"; horizon = quote.type === "bond" ? "Долгосрок" : "Долгосрок"; }
     else if (score <= 30) { recommendation = "Избегать"; horizon = "Краткосрок"; }
     
     return { score: Math.round(score), recommendation, horizon, reasons, tags };
@@ -719,25 +747,17 @@
   if (runAnalyticsBtn) {
     runAnalyticsBtn.addEventListener("click", async () => {
       runAnalyticsBtn.disabled = true;
-      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем историю...';
+      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем список...';
       analyticsEmpty.hidden = true;
       analyticsList.hidden = false;
-      analyticsList.innerHTML = `
-        <li class="loading-progress">
-          <div class="loading-spinner"></div>
-          <div>Загрузка котировок и истории (около 50 запросов)...</div>
-        </li>
-      `;
+      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка списка 50 бумаг...</div></li>`;
 
       try {
-        // 1. Получаем текущие цены
         const quotes = await fetchQuotes();
         
-        // 2. Получаем историю для каждой бумаги (параллельно, но с ограничением)
         const analyzed = [];
         for (let i = 0; i < quotes.length; i++) {
           const q = quotes[i];
-          // Обновляем прогресс
           analyticsList.innerHTML = `
             <li class="loading-progress">
               <div class="loading-spinner"></div>
@@ -745,12 +765,12 @@
             </li>
           `;
           
-          const closes = await fetchHistory(q.ticker);
+          const isBond = q.type === "bond";
+          const closes = await fetchHistory(q.ticker, isBond);
           const analysis = analyzeQuote(q, closes);
           analyzed.push({ ...q, ...analysis });
         }
 
-        // 3. Сортируем и выводим
         const results = analyzed.sort((a, b) => b.score - a.score);
         analyticsList.innerHTML = "";
         analyticsCount.textContent = String(results.length);
@@ -786,7 +806,7 @@
         });
       } catch (err) {
         console.error(err);
-        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные. MOEX может быть недоступен.</li>';
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные. Проверьте соединение.</li>';
         showToast("Ошибка загрузки аналитики", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
