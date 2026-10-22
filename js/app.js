@@ -16,7 +16,19 @@
   const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
   const money = (v) => Engine.formatMoney(v, state.settings.currency);
   const num = (v) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(Number(v) || 0));
-
+  // --- Toast Уведомления ---
+  function showToast(message, type = "success") {
+    const container = $("#toastContainer");
+    if (!container) return;
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠'}</span> ${message}`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add("toast-out");
+      toast.addEventListener("animationend", () => toast.remove());
+    }, 3000);
+  }
   function persist() {
     Storage.save(state);
   }
