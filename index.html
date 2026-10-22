@@ -89,11 +89,13 @@
           <p class="field-hint">Сколько сверх минимальных платежей готов вносить.</p>
         </div>
 
-        <div class="empty">
+        <div class="empty" id="strategyEmpty">
           <div class="empty-glyph">◔</div>
           <p class="empty-title">Сначала добавь долги</p>
           <p class="empty-text">Когда появится список, здесь покажем порядок закрытия.</p>
         </div>
+
+        <ul class="tips" id="strategyTips"></ul>
       </section>
 
       <!-- РЕЗУЛЬТАТ -->
@@ -148,12 +150,12 @@
             </select>
           </label>
 
-          <label class="row">
+          <div class="row">
             <span class="row-label">Тема</span>
-            <span class="row-control">
+            <span class="row-control" style="padding:0;border:none;background:transparent;">
               <button class="btn btn-ghost btn-sm" id="themeBtn2" type="button">Переключить</button>
             </span>
-          </label>
+          </div>
         </div>
 
         <div class="section-head">
@@ -197,6 +199,50 @@
     </nav>
   </div>
 
+  <!-- МОДАЛКА ДОЛГА -->
+  <div class="modal-backdrop" id="debtModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <h3 id="modalTitle">Новый долг</h3>
+        <button class="icon-btn" id="modalClose" type="button" aria-label="Закрыть">✕</button>
+      </div>
+      <form id="debtForm" class="modal-form">
+        <label class="field">
+          <span class="field-label">Название</span>
+          <div class="field-input">
+            <input name="name" required maxlength="40" placeholder="Например, карта Тинькофф" />
+          </div>
+        </label>
+        <div class="grid-2" style="margin:0;">
+          <label class="field">
+            <span class="field-label">Остаток</span>
+            <div class="field-input">
+              <input name="balance" type="number" inputmode="decimal" required min="0" step="0.01" placeholder="0" />
+            </div>
+          </label>
+          <label class="field">
+            <span class="field-label">Ставка, % год.</span>
+            <div class="field-input">
+              <input name="apr" type="number" inputmode="decimal" required min="0" step="0.1" placeholder="0" />
+            </div>
+          </label>
+        </div>
+        <label class="field">
+          <span class="field-label">Минимальный платёж в месяц</span>
+          <div class="field-input">
+            <input name="minPayment" type="number" inputmode="decimal" required min="0" step="0.01" placeholder="0" />
+          </div>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="debtCancel">Отмена</button>
+          <button type="submit" class="btn btn-primary" style="width:auto;margin:0;flex:1;">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/engine.js"></script>
+  <script src="js/storage.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
