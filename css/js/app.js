@@ -1,56 +1,419 @@
-(() => {
+/* Просвет — UI, события, связка движка, хранилища и экранов. */
+(function () {
   "use strict";
 
+  const Engine = window.Engine;
+  const Storage = window.Storage;
   const root = document.documentElement;
-  const THEME_KEY = "prosvet.theme";
 
-  /* ---------- Theme ---------- */
+  /* ---------- Состояние ---------- */
+  let state = Storage.load();
+  let lastResult = null;
+
+  /* ---------- Утилиты ---------- */
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+  const money = (v) => Engine.formatMoney(v, state.settings.currency);
+  const num = (v) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(Number(v) || 0));
+
+  function persist() {
+    Storage.save(state);
+  }
+
+  /* ---------- Тема ---------- */
+  const THEME_KEY = "prosvet.theme";
   function applyTheme(t) {
     root.setAttribute("data-theme", t);
-    const meta = document.querySelector('meta[name="theme-color"]');
+    const meta = $('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", t === "light" ? "#f6f4ee" : "#0b0b0e");
-    const icon = document.querySelector(".theme-icon");
+    const icon = $(".theme-icon");
     if (icon) icon.textContent = t === "light" ? "◑" : "◐";
     try { localStorage.setItem(THEME_KEY, t); } catch {}
   }
-
   function toggleTheme() {
     applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light");
   }
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem(THEME_KEY); } catch {}
+  applyTheme(savedTheme === "light" ? "light" : "dark");
 
-  let saved = null;
-  try { saved = localStorage.getItem(THEME_KEY); } catch {}
-  applyTheme(saved === "light" ? "light" : "dark");
-
-  document.getElementById("themeBtn")?.addEventListener("click", toggleTheme);
-  document.getElementById("themeBtn2")?.addEventListener("click", toggleTheme);
-
-  /* ---------- Tabs ---------- */
-  const screens = document.querySelectorAll(".screen");
-  const tabs = document.querySelectorAll(".tab");
-
+  /* ---------- Навигация ---------- */
+  const screens = $$(".screen");
+  const tabs = $$(".tab");
   function show(name) {
     screens.forEach(s => s.classList.toggle("is-active", s.dataset.screen === name));
     tabs.forEach(t => t.classList.toggle("is-active", t.dataset.tab === name));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-
   tabs.forEach(t => t.addEventListener("click", () => show(t.dataset.tab)));
-  show("debts");
 
-  /* ---------- Strategy segmented (visual only for now) ---------- */
-  const segBtns = document.querySelectorAll("#strategySeg .seg");
-  const hint = document.getElementById("strategyHint");
+  /* ---------- Стратегия ---------- */
+  const segBtns = $$("#strategySeg .seg");
+  const hint = $("#strategyHint");
   const hints = {
     avalanche: "Лавина: сначала самый дорогой долг по ставке. Математически выгоднее всего.",
     snowball: "Снежный ком: сначала самый маленький долг. Больше закрытий — сильнее мотивация.",
-    custom: "Свой порядок: расставишь приоритеты вручную в списке долгов.",
+    custom: "Свой порядок: расставляешь приоритеты через список долгов.",
   };
+  function setStrategy(strategy) {
+    state.settings.strategy = strategy;
+    segBtns.forEach(b => b.classList.toggle("is-active", b.dataset.strategy === strategy));
+    if (hint) hint.textContent = hints[strategy] || "";
+    persist();
+    render();
+  }
+  segBtns.forEach(btn => btn.addEventListener("click", () => setStrategy(btn.dataset.strategy)));
 
-  segBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      segBtns.forEach(b => b.classList.toggle("is-active", b === btn));
-      if (hint) hint.textContent = hints[btn.dataset.strategy] || "";
+  /* ---------- Доп. платёж ---------- */
+  const extraInput = $("#extraPayment");
+  let extraTimer = null;
+  extraInput.addEventListener("input", () => {
+    clearTimeout(extraTimer);
+    extraTimer = setTimeout(() => {
+      state.settings.extraPayment = Math.max(0, Number(extraInput.value) || 0);
+      persist();
+      render();
+    }, 250);
+  });
+
+  /* ---------- Валюта ---------- */
+  const currencySel = $("#currencySel");
+  currencySel.addEventListener("change", () => {
+    state.settings.currency = currencySel.value;
+    persist();
+    render();
+  });
+
+  /* ---------- Модалка долга ---------- */
+  const modal = $("#debtModal");
+  const modalTitle = $("#modalTitle");
+  const form = $("#debtForm");
+
+  function openDebtModal(debt) {
+    form.reset();
+    if (debt) {
+      form.elements.name.value = debt.name;
+      form.elements.balance.value = debt.balance;
+      form.elements.apr.value = debt.apr;
+      form.elements.minPayment.value = debt.minPayment;
+      form.dataset.editId = debt.id;
+      modalTitle.textContent = "Изменить долг";
+    } else {
+      delete form.dataset.editId;
+      modalTitle.textContent = "Новый долг";
+    }
+    modal.hidden = false;
+    setTimeout(() => form.elements.name.focus(), 30);
+  }
+  function closeModal() { modal.hidden = true; }
+
+  $("#addDebtBtn").addEventListener("click", () => openDebtModal(null));
+  $("#modalClose").addEventListener("click", closeModal);
+  $("#debtCancel").addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.hidden) closeModal();
+  });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const name = String(fd.get("name") || "").trim();
+    const balance = Math.max(0, Number(fd.get("balance")) || 0);
+    const apr = Math.max(0, Number(fd.get("apr")) || 0);
+    const minPayment = Math.max(0, Number(fd.get("minPayment")) || 0);
+    if (!name || balance <= 0) return;
+
+    const editId = form.dataset.editId;
+    if (editId) {
+      const d = state.debts.find(x => x.id === editId);
+      if (d) Object.assign(d, { name, balance, apr, minPayment });
+    } else {
+      state.debts.push({
+        id: Storage.makeId(),
+        name,
+        balance,
+        apr,
+        minPayment,
+        priority: state.debts.length,
+        createdAt: Date.now(),
+      });
+    }
+    persist();
+    closeModal();
+    render();
+  });
+
+  /* ---------- Список долгов ---------- */
+  const debtList = $("#debtList");
+  const debtEmpty = $("#debtsEmpty");
+  const debtCount = $("#debtCount");
+
+  function renderDebts() {
+    debtList.innerHTML = "";
+    debtCount.textContent = String(state.debts.length);
+    if (state.debts.length === 0) {
+      debtList.hidden = true;
+      debtEmpty.hidden = false;
+      return;
+    }
+    debtEmpty.hidden = true;
+    debtList.hidden = false;
+
+    for (const d of state.debts) {
+      const li = document.createElement("li");
+      li.className = "debt-card";
+      li.dataset.id = d.id;
+      li.innerHTML = `
+        <div class="debt-left">
+          <div class="debt-name"></div>
+          <div class="debt-meta">
+            <span class="num">${d.apr}%</span> · мин. <span class="num">${money(d.minPayment)}</span>
+          </div>
+        </div>
+        <div class="debt-right">
+          <div class="debt-balance num">${money(d.balance)}</div>
+          <button class="debt-del" type="button" aria-label="Удалить долг">×</button>
+        </div>
+      `;
+      li.querySelector(".debt-name").textContent = d.name;
+      li.addEventListener("click", (e) => {
+        if (e.target.closest(".debt-del")) return;
+        openDebtModal(d);
+      });
+      li.querySelector(".debt-del").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!confirm(`Удалить долг «${d.name}»?`)) return;
+        state.debts = state.debts.filter(x => x.id !== d.id);
+        state.debts.forEach((x, i) => { x.priority = i; });
+        persist();
+        render();
+      });
+      debtList.appendChild(li);
+    }
+  }
+
+  /* ---------- Сводка ---------- */
+  function renderSummary() {
+    const total = state.debts.reduce((s, d) => s + (Number(d.balance) || 0), 0);
+    const minSum = state.debts.reduce((s, d) => s + (Number(d.minPayment) || 0), 0);
+    const weighted = total > 0
+      ? state.debts.reduce((s, d) => s + (Number(d.apr) || 0) * (Number(d.balance) || 0), 0) / total
+      : 0;
+    $("#sumTotal").textContent = money(total);
+    $("#sumMin").textContent = money(minSum);
+    $("#sumRate").textContent = (Math.round(weighted * 10) / 10) + "%";
+  }
+
+  /* ---------- Результат ---------- */
+  function renderResult() {
+    const result = Engine.simulate(state.debts, {
+      strategy: state.settings.strategy,
+      extraPayment: state.settings.extraPayment,
     });
+    lastResult = result;
+
+    const freedomDate = $("#freedomDate");
+    const freedomMonths = $("#freedomMonths");
+    const totalInterest = $("#totalInterest");
+    const totalPaid = $("#totalPaid");
+    const chartEmpty = $("#chartEmpty");
+    const chart = $("#chart");
+
+    if (state.debts.length === 0) {
+      freedomDate.textContent = "—";
+      freedomMonths.textContent = "0 месяцев";
+      totalInterest.textContent = money(0);
+      totalPaid.textContent = money(0);
+      chartEmpty.hidden = false;
+      chart.style.display = "none";
+      $("#tips").innerHTML = '<li class="tip tip-mute">Добавь долги — здесь появятся расчётные подсказки.</li>';
+      return;
+    }
+
+    if (result.unpaid.length > 0) {
+      freedomDate.textContent = "не закрывается";
+      freedomMonths.textContent = `${result.months}+ мес. при текущих платежах`;
+    } else {
+      freedomDate.textContent = Engine.formatDate(result.freedomDate);
+      freedomMonths.textContent = `${result.months} ${Engine.pluralMonths(result.months)}`;
+    }
+    totalInterest.textContent = money(result.totalInterest);
+    totalPaid.textContent = money(result.totalPaid);
+
+    // График
+    if (result.schedule.length > 1) {
+      chartEmpty.hidden = true;
+      chart.style.display = "block";
+      drawChart(result.schedule, chart);
+    } else {
+      chartEmpty.hidden = false;
+      chartEmpty.textContent = "Данных для графика мало.";
+      chart.style.display = "none";
+    }
+
+    // Советы
+    const tips = Engine.buildRecommendations(state.debts, result, {
+      currency: state.settings.currency,
+      strategy: state.settings.strategy,
+      extraPayment: state.settings.extraPayment,
+    });
+    const ul = $("#tips");
+    ul.innerHTML = "";
+    for (const t of tips) {
+      const li = document.createElement("li");
+      li.className = `tip tip-${t.type}`;
+      li.textContent = t.text;
+      ul.appendChild(li);
+    }
+  }
+
+  /* ---------- Стратегия — советы ---------- */
+  function renderStrategyScreen() {
+    const empty = $("#strategyEmpty");
+    const tips = $("#strategyTips");
+    if (state.debts.length === 0) {
+      empty.hidden = false;
+      tips.innerHTML = "";
+      return;
+    }
+    empty.hidden = true;
+    const order = Engine.orderDebts(state.debts, state.settings.strategy);
+    tips.innerHTML = "";
+    order.forEach((d, i) => {
+      const li = document.createElement("li");
+      li.className = "tip";
+      li.innerHTML = `<span class="num" style="color:var(--accent)">${i + 1}.</span> <span class="order-name"></span>`;
+      li.querySelector(".order-name").textContent = d.name;
+      tips.appendChild(li);
+    });
+  }
+
+  /* ---------- Chart (canvas, без библиотек) ---------- */
+  function drawChart(schedule, canvas) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const W = Math.max(280, rect.width || canvas.clientWidth || 600);
+    const H = 220;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const accent = getComputedStyle(root).getPropertyValue("--accent").trim() || "#d9b46a";
+    const line = getComputedStyle(root).getPropertyValue("--line").trim() || "#26262f";
+
+    const pad = { l: 8, r: 8, t: 16, b: 22 };
+    const cw = W - pad.l - pad.r;
+    const ch = H - pad.t - pad.b;
+    const maxVal = schedule[0].totalRemaining || 1;
+
+    const px = (i) => pad.l + (i / Math.max(1, schedule.length - 1)) * cw;
+    const py = (v) => pad.t + ch - (v / maxVal) * ch;
+
+    // сетка
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    for (let g = 1; g <= 3; g++) {
+      const y = pad.t + (ch / 3) * g;
+      ctx.beginPath();
+      ctx.moveTo(pad.l, y);
+      ctx.lineTo(W - pad.r, y);
+      ctx.stroke();
+    }
+
+    // заливка
+    const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+    grad.addColorStop(0, accent + "55");
+    grad.addColorStop(1, accent + "00");
+    ctx.beginPath();
+    ctx.moveTo(px(0), H - pad.b);
+    schedule.forEach((m, i) => ctx.lineTo(px(i), py(m.totalRemaining)));
+    ctx.lineTo(px(schedule.length - 1), H - pad.b);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // линия
+    ctx.beginPath();
+    schedule.forEach((m, i) => {
+      const x = px(i), y = py(m.totalRemaining);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    // подпись месяцев
+    ctx.fillStyle = getComputedStyle(root).getPropertyValue("--text-mute").trim() || "#666672";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("старт", pad.l, H - 6);
+    ctx.textAlign = "right";
+    ctx.fillText(`${schedule.length} мес.`, W - pad.r, H - 6);
+  }
+
+  /* ---------- Полный ререндер ---------- */
+  function render() {
+    renderDebts();
+    renderSummary();
+    renderStrategyScreen();
+    renderResult();
+  }
+
+  /* ---------- Импорт / экспорт / сброс ---------- */
+  $("#exportBtn").addEventListener("click", () => Storage.exportJson(state));
+  $("#importBtn").addEventListener("click", () => $("#importFile").click());
+  $("#importFile").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const next = await Storage.importFile(file);
+      state = next;
+      persist();
+      syncInputs();
+      render();
+      alert("Импорт выполнен.");
+    } catch (err) {
+      alert("Ошибка импорта: " + err.message);
+    }
+  });
+  $("#resetBtn").addEventListener("click", () => {
+    if (!confirm("Сбросить все долги и настройки? Действие необратимо.")) return;
+    state = Storage.reset();
+    syncInputs();
+    render();
+  });
+
+  /* ---------- Синхронизация инпутов с состоянием ---------- */
+  function syncInputs() {
+    extraInput.value = state.settings.extraPayment || "";
+    currencySel.value = state.settings.currency;
+    segBtns.forEach(b => b.classList.toggle("is-active", b.dataset.strategy === state.settings.strategy));
+    hint.textContent = hints[state.settings.strategy] || "";
+  }
+
+  /* ---------- Тема: обработчики ---------- */
+  $("#themeBtn").addEventListener("click", toggleTheme);
+  $("#themeBtn2").addEventListener("click", toggleTheme);
+
+  /* ---------- Старт ---------- */
+  syncInputs();
+  show("debts");
+  render();
+
+  // Перерисовка графика при ресайзе
+  let rzTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(rzTimer);
+    rzTimer = setTimeout(() => {
+      if (lastResult && lastResult.schedule.length > 1) {
+        drawChart(lastResult.schedule, $("#chart"));
+      }
+    }, 150);
   });
 })();
