@@ -408,6 +408,12 @@
 
   // Перерисовка графика при ресайзе
   let rzTimer = null;
+    // --- PWA: Установка Service Worker ---
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg failed', err));
+    });
+  }
   window.addEventListener("resize", () => {
     clearTimeout(rzTimer);
     rzTimer = setTimeout(() => {
