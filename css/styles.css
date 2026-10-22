@@ -557,3 +557,71 @@ button { font: inherit; color: inherit; }
     gap: 14px;
   }
 }
+/* ========== ФИКС МОДАЛКИ (БРОНЯ) ========== */
+.modal-backdrop {
+  padding: 16px; /* Чуть меньше отступ по бокам */
+}
+.modal {
+  box-sizing: border-box;
+  overflow-x: hidden; /* Строго запрещаем горизонтальный скролл */
+}
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  min-width: 0; /* Спасает от распирания */
+}
+.modal-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-bottom: 0 !important;
+}
+.modal-grid .field {
+  min-width: 0; /* Убирает вылезание инпутов из ячеек */
+}
+.field-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.field-input input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* Убираем системные стрелочки у чисел */
+  -moz-appearance: textfield;
+}
+.field-input input::-webkit-outer-spin-button,
+.field-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+.modal-actions .btn {
+  margin: 0;
+  box-sizing: border-box;
+}
+.modal-actions .btn-ghost {
+  flex: 0 0 auto; /* Отмена по размеру текста */
+  padding: 13px 20px;
+}
+.modal-actions .btn-primary {
+  flex: 1 1 auto; /* Сохранить занимает всё остальное место */
+  width: auto;
+}
+
+/* На узких экранах (телефоны) поля встают друг под друга */
+@media (max-width: 440px) {
+  .modal-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
