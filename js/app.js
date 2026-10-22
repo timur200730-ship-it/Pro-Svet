@@ -18,7 +18,6 @@
 
   function persist() { Storage.save(state); }
 
-  // --- Toast Уведомления ---
   function showToast(message, type = "success") {
     const container = $("#toastContainer");
     if (!container) return;
@@ -42,9 +41,7 @@
     if (icon) icon.textContent = t === "light" ? "◑" : "◐";
     try { localStorage.setItem(THEME_KEY, t); } catch {}
   }
-  function toggleTheme() {
-    applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light");
-  }
+  function toggleTheme() { applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light"); }
   let savedTheme = null;
   try { savedTheme = localStorage.getItem(THEME_KEY); } catch {}
   applyTheme(savedTheme === "light" ? "light" : "dark");
@@ -187,7 +184,6 @@
       `;
       li.querySelector(".debt-name").textContent = d.name;
       
-      // Открываем детализацию при клике на карточку
       li.addEventListener("click", (e) => {
         if (e.target.closest(".debt-del")) return;
         openDetailsModal(d);
@@ -256,7 +252,6 @@
     totalInterest.textContent = money(result.totalInterest);
     totalPaid.textContent = money(result.totalPaid);
 
-    // График
     if (result.schedule.length > 1) {
       chartEmpty.hidden = true;
       chart.style.display = "block";
@@ -266,7 +261,6 @@
       chart.style.display = "none";
     }
 
-    // Советы
     const tips = Engine.buildRecommendations(state.debts, result, {
       currency: state.settings.currency,
       strategy: state.settings.strategy,
@@ -281,7 +275,6 @@
       ul.appendChild(li);
     }
 
-    // Сравнение и второй график
     renderComparison();
     if (result.schedule.length > 1) {
       const av = Engine.simulate(state.debts, { strategy: "avalanche", extraPayment: state.settings.extraPayment });
@@ -571,15 +564,63 @@
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX ---------- */
+  /* ---------- Аналитика MOEX (ПРОДВИНУТАЯ) ---------- */
   const TICKERS = [
     "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL",
     "YNDX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "POLY",
     "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS",
-    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "OZON",
-    "SU26238RMFS4", "SU26243RMFS4", "SU26244RMFS4", "SU26245RMFS4", "SU26246RMFS4",
-    "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"
-  ];
+    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "OZON"
+  ]; // Оставили только акции для технического анализа
+
+  // Вспомогательные функции для технического анализа
+  function calcSMA(closes, period) {
+    if (closes.length < period) return null;
+    const slice = closes.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  }
+
+  function calcRSI(closes, period = 14) {
+    if (closes.length <= period) return null;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = closes[closes.length - period + i - 1] - closes[closes.length - period + i - 2];
+      if (diff >= 0) gains += diff; else losses -= diff;
+    }
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+
+    for (let i = closes.length - period; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      const gain = diff >= 0 ? diff : 0;
+      const loss = diff < 0 ? -diff : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+    }
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+  }
+
+  async function fetchHistory(ticker) {
+    // Берем данные за последний год (чтобы точно было 200 торговых дней)
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    const fromDate = d.toISOString().split('T')[0];
+    
+    const url = `https://iss.moex.com/iss/history/engines/stock/markets/shares/boards/TQBR/securities/${ticker}.json?from=${fromDate}&iss.meta=off`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = await res.json();
+    
+    const columns = json.history.columns;
+    const data = json.history.data;
+    const closeIdx = columns.indexOf("CLOSE");
+    
+    if (closeIdx === -1) return null;
+    
+    const closes = data.map(row => row[closeIdx]).filter(v => v !== null);
+    return closes;
+  }
 
   async function fetchQuotes() {
     const url = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata";
@@ -595,8 +636,7 @@
       LASTCHANGEPRCNT: columns.indexOf("LASTCHANGEPRCNT"),
       OPEN: columns.indexOf("OPEN"),
       HIGH: columns.indexOf("HIGH"),
-      LOW: columns.indexOf("LOW"),
-      VALTODAY: columns.indexOf("VALTODAY")
+      LOW: columns.indexOf("LOW")
     };
 
     const quotes = [];
@@ -616,22 +656,59 @@
     return quotes;
   }
 
-  function analyzeQuote(quote) {
+  function analyzeQuote(quote, closes) {
     let score = 50;
     let reasons = [];
-    if (quote.changePercent > 0) { score += 10; reasons.push("Положительная дневная динамика"); }
-    else { score -= 5; reasons.push("Отрицательная дневная динамика"); }
+    let tags = [];
+
+    // 1. Дневная динамика
+    if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); }
+    else { score -= 5; reasons.push("Падение за день"); }
+
+    // 2. Позиция в дневном диапазоне
     if (quote.low > 0 && quote.high > 0) {
       const mid = (quote.high + quote.low) / 2;
-      if (quote.price > mid) { score += 15; reasons.push("Цена выше середины дневного диапазона"); }
-      else { score -= 10; reasons.push("Цена ниже середины дневного диапазона"); }
+      if (quote.price > mid) { score += 5; reasons.push("Выше середины дня"); }
+      else { score -= 5; reasons.push("Ниже середины дня"); }
     }
+
+    // 3. Технический анализ (если есть история)
+    if (closes && closes.length > 20) {
+      const ma200 = calcSMA(closes, 200);
+      const rsi = calcRSI(closes, 14);
+
+      if (ma200) {
+        if (quote.price > ma200) {
+          score += 15;
+          reasons.push("Глобальный тренд вверх (выше MA200)");
+          tags.push({ text: "> MA200", type: "good" });
+        } else {
+          score -= 15;
+          reasons.push("Глобальный тренд вниз (ниже MA200)");
+          tags.push({ text: "< MA200", type: "bad" });
+        }
+      }
+
+      if (rsi !== null) {
+        const rsiVal = Math.round(rsi);
+        tags.push({ text: `RSI: ${rsiVal}`, type: rsiVal < 30 ? "good" : rsiVal > 70 ? "bad" : "neutral" });
+        
+        if (rsi < 30) { score += 15; reasons.push("RSI < 30 (перепроданность, возможен отскок)"); }
+        else if (rsi > 70) { score -= 15; reasons.push("RSI > 70 (перекупленность, риск коррекции)"); }
+        else { reasons.push(`RSI ${rsiVal} (нейтрально)`); }
+      }
+    } else {
+      tags.push({ text: "Мало данных", type: "neutral" });
+    }
+
     score = Math.max(0, Math.min(100, score));
-    let recommendation = "Держать / Наблюдать";
-    let horizon = "Среднесрочно";
+    let recommendation = "Держать";
+    let horizon = "Среднесрок";
+    
     if (score >= 70) { recommendation = "Покупать"; horizon = "Долгосрок"; }
-    else if (score <= 30) { recommendation = "Избегать / Продавать"; horizon = "Краткосрок"; }
-    return { score: Math.round(score), recommendation, horizon, reasons };
+    else if (score <= 30) { recommendation = "Избегать"; horizon = "Краткосрок"; }
+    
+    return { score: Math.round(score), recommendation, horizon, reasons, tags };
   }
 
   const runAnalyticsBtn = $("#runAnalyticsBtn");
@@ -642,15 +719,39 @@
   if (runAnalyticsBtn) {
     runAnalyticsBtn.addEventListener("click", async () => {
       runAnalyticsBtn.disabled = true;
-      runAnalyticsBtn.innerHTML = '<span>⏳</span> Анализируем...';
+      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем историю...';
       analyticsEmpty.hidden = true;
       analyticsList.hidden = false;
-      analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--text-mute)">Загрузка данных с MOEX...</li>';
+      analyticsList.innerHTML = `
+        <li class="loading-progress">
+          <div class="loading-spinner"></div>
+          <div>Загрузка котировок и истории (около 50 запросов)...</div>
+        </li>
+      `;
 
       try {
+        // 1. Получаем текущие цены
         const quotes = await fetchQuotes();
-        const results = quotes.map(q => ({ ...q, ...analyzeQuote(q) })).sort((a, b) => b.score - a.score);
         
+        // 2. Получаем историю для каждой бумаги (параллельно, но с ограничением)
+        const analyzed = [];
+        for (let i = 0; i < quotes.length; i++) {
+          const q = quotes[i];
+          // Обновляем прогресс
+          analyticsList.innerHTML = `
+            <li class="loading-progress">
+              <div class="loading-spinner"></div>
+              <div>Анализ ${i + 1} из ${quotes.length} (${q.ticker})...</div>
+            </li>
+          `;
+          
+          const closes = await fetchHistory(q.ticker);
+          const analysis = analyzeQuote(q, closes);
+          analyzed.push({ ...q, ...analysis });
+        }
+
+        // 3. Сортируем и выводим
+        const results = analyzed.sort((a, b) => b.score - a.score);
         analyticsList.innerHTML = "";
         analyticsCount.textContent = String(results.length);
 
@@ -662,6 +763,8 @@
           const recClass = item.recommendation.includes("Покупать") ? "rec-buy" 
                          : item.recommendation.includes("Избегать") ? "rec-sell" 
                          : "rec-hold";
+
+          const tagsHtml = item.tags.map(t => `<span class="tag tag-${t.type}">${t.text}</span>`).join("");
 
           li.innerHTML = `
             <div class="analytics-header">
@@ -676,12 +779,14 @@
               <span class="analytics-rec ${recClass}">${item.recommendation}</span>
               <span style="font-size:12px; color:var(--text-mute);">${item.horizon}</span>
             </div>
+            <div class="analytics-tags">${tagsHtml}</div>
             <div class="analytics-reasons">${item.reasons.join(" · ")}</div>
           `;
           analyticsList.appendChild(li);
         });
       } catch (err) {
-        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные.</li>';
+        console.error(err);
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные. MOEX может быть недоступен.</li>';
         showToast("Ошибка загрузки аналитики", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
