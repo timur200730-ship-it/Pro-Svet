@@ -177,10 +177,9 @@
           <button class="debt-del" type="button" aria-label="Удалить долг">×</button>
         </div>
       `;
-      li.querySelector(".debt-name").textContent = d.name;
-      li.addEventListener("click", (e) => {
+        li.addEventListener("click", (e) => {
         if (e.target.closest(".debt-del")) return;
-        openDebtModal(d);
+        openDetailsModal(d); // <-- СТАЛО ТАК (теперь открываем детали)
       });
       li.querySelector(".debt-del").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -229,6 +228,8 @@
       chartEmpty.hidden = false;
       chart.style.display = "none";
       $("#tips").innerHTML = '<li class="tip tip-mute">Добавь долги — здесь появятся расчётные подсказки.</li>';
+      // ДОБАВИТЬ ВОТ ЭТУ СТРОКУ:
+    renderComparison();
       return;
     }
 
@@ -270,6 +271,75 @@
   }
 
   /* ---------- Стратегия — советы ---------- */
+    // --- Сравнение стратегий ---
+  function renderComparison() {
+    const box = $("#comparisonBox");
+    if (!box) return;
+
+    if (state.debts.length === 0) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+
+    const av = Engine.simulate(state.debts, { strategy: "avalanche", extraPayment: state.settings.extraPayment });
+    const sb = Engine.simulate(state.debts, { strategy: "snowball", extraPayment: state.settings.extraPayment });
+
+    const fmtTime = (res) => res.unpaid.length > 0 ? "50+ лет" : `${res.months} мес.`;
+    
+    $("#cmpAvalancheTime").textContent = fmtTime(av);
+    $("#cmpAvalancheInterest").textContent = `Переплата: ${money(av.totalInterest)}`;
+    
+    $("#cmpSnowballTime").textContent = fmtTime(sb);
+    $("#cmpSnowballInterest").textContent = `Переплата: ${money(sb.totalInterest)}`;
+  }
+
+  // --- Модалка детализации ---
+  const detailsModal = $("#detailsModal");
+  const detailsTitle = $("#detailsTitle");
+  const detailsBody = $("#detailsBody");
+
+  function closeDetailsModal() {
+    detailsModal.hidden = true;
+    currentDetailDebt = null;
+  }
+
+  function openDetailsModal(debt) {
+    if (!lastResult || !lastResult.schedule) return;
+    currentDetailDebt = debt;
+    detailsTitle.textContent = debt.name;
+
+    detailsBody.innerHTML = "";
+    // Проходимся по графику и ищем платежи по этому долгу
+    lastResult.schedule.forEach(monthRow => {
+      const debtData = monthRow.debts.find(x => x.id === debt.id);
+      if (debtData && (debtData.payment > 0 || debtData.remaining > 0)) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${monthRow.month}</td>
+          <td class="num">${money(debtData.payment)}</td>
+          <td class="num" style="color:var(--danger)">${money(debtData.interest)}</td>
+          <td class="num" style="color:var(--success)">${money(debtData.principal)}</td>
+          <td class="num">${money(debtData.remaining)}</td>
+        `;
+        detailsBody.appendChild(tr);
+      }
+    });
+
+    detailsModal.hidden = false;
+  }
+
+  // Закрытие модалки деталей
+  $("#detailsClose").addEventListener("click", closeDetailsModal);
+  detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) closeDetailsModal(); });
+  
+  // Кнопка "Редактировать" внутри модалки деталей
+  $("#detailsEditBtn").addEventListener("click", () => {
+    if (currentDetailDebt) {
+      closeDetailsModal();
+      openDebtModal(currentDetailDebt);
+    }
+  });
   function renderStrategyScreen() {
     const empty = $("#strategyEmpty");
     const tips = $("#strategyTips");
