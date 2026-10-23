@@ -564,14 +564,15 @@
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX (50 бумаг) ---------- */
+  /* ---------- Аналитика MOEX ---------- */
   
-  // 40 акций + 10 ОФЗ = 50 бумаг
+  // 50 акций + 10 ОФЗ = 60 бумаг
   const STOCKS = [
     "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL",
     "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL",
     "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS",
-    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "UGLD"
+    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "UGLD",
+    "POSI", "FLOT", "SPBE", "TGKA", "SVCB", "LENT", "MVID", "ASTR", "WUSH", "DIAS"
   ];
   
   const BONDS = [
@@ -579,7 +580,7 @@
     "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"
   ];
 
-  // Вспомогательные функции для технического анализа
+  // Технический анализ
   function calcSMA(closes, period) {
     if (closes.length < period) return null;
     const slice = closes.slice(-period);
@@ -613,7 +614,6 @@
     d.setFullYear(d.getFullYear() - 1);
     const fromDate = d.toISOString().split('T')[0];
     
-    // Для акций TQBR, для облигаций TQOB
     const board = isBond ? "bonds" : "shares";
     const boardId = isBond ? "TQOB" : "TQBR";
     
@@ -638,9 +638,7 @@
   }
 
   async function fetchQuotes() {
-    // Запрашиваем акции
     const urlStocks = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata";
-    // Запрашиваем облигации
     const urlBonds = "https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off&iss.only=marketdata";
 
     const [resStocks, resBonds] = await Promise.all([fetch(urlStocks), fetch(urlBonds)]);
@@ -651,38 +649,37 @@
     
     const quotes = [];
 
-    // Обработка акций
+    // Обработка акций (добавлен WAPRICE в качестве запасной цены)
     const c1 = jsonStocks.marketdata.columns;
     const d1 = jsonStocks.marketdata.data;
-    const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW") };
+    const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW"), WAPRICE: c1.indexOf("WAPRICE") };
 
     for (const row of d1) {
       const ticker = row[idx1.SECID];
       if (!STOCKS.includes(ticker)) continue;
-      const last = row[idx1.LAST] || row[idx1.OPEN] || 0;
+      const last = row[idx1.LAST] || row[idx1.WAPRICE] || row[idx1.OPEN] || 0;
       if (last === 0) continue;
       quotes.push({
         ticker, type: "stock", price: last,
         changePercent: row[idx1.LASTCHANGEPRCNT] || 0,
-        high: row[idx1.HIGH] || 0, low: row[idx1.LOW] || 0
+        high: row[idx1.HIGH] || last, low: row[idx1.LOW] || last
       });
     }
 
     // Обработка облигаций
     const c2 = jsonBonds.marketdata.columns;
     const d2 = jsonBonds.marketdata.data;
-    const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW") };
+    const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW"), WAPRICE: c2.indexOf("WAPRICE") };
 
     for (const row of d2) {
       const ticker = row[idx2.SECID];
       if (!BONDS.includes(ticker)) continue;
-      const last = row[idx2.LAST] || row[idx2.OPEN] || 0;
+      const last = row[idx2.LAST] || row[idx2.WAPRICE] || row[idx2.OPEN] || 0;
       if (last === 0) continue;
-      // У облигаций цена в % от номинала, умножаем на 10 для примерной цены в рублях (номинал 1000)
       quotes.push({
-        ticker, type: "bond", price: last * 10, // Примерная цена в рублях
+        ticker, type: "bond", price: last * 10,
         changePercent: row[idx2.LASTCHANGEPRCNT] || 0,
-        high: (row[idx2.HIGH] || 0) * 10, low: (row[idx2.LOW] || 0) * 10
+        high: (row[idx2.HIGH] || last) * 10, low: (row[idx2.LOW] || last) * 10
       });
     }
 
@@ -693,37 +690,39 @@
     let score = 50;
     let reasons = [];
     let tags = [];
+    let shortSignal = "Нейтрально";
+    let longSignal = "Нейтрально";
 
     if (quote.type === "bond") {
       tags.push({ text: "ОФЗ", type: "neutral" });
+      longSignal = "Держать до погашения";
     }
 
-    // 1. Дневная динамика
+    // Дневная динамика
     if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); }
     else { score -= 5; reasons.push("Падение за день"); }
 
-    // 2. Позиция в дневном диапазоне
-    if (quote.low > 0 && quote.high > 0) {
-      const mid = (quote.high + quote.low) / 2;
-      if (quote.price > mid) { score += 5; reasons.push("Выше середины дня"); }
-      else { score -= 5; reasons.push("Ниже середины дня"); }
-    }
-
-    // 3. Технический анализ
     if (closes && closes.length > 20) {
+      const ma50 = calcSMA(closes, 50);
       const ma200 = calcSMA(closes, 200);
       const rsi = calcRSI(closes, 14);
 
-      if (ma200) {
-        if (quote.price > ma200) { score += 15; reasons.push("Выше MA200 (тренд вверх)"); tags.push({ text: "> MA200", type: "good" }); }
-        else { score -= 15; reasons.push("Ниже MA200 (тренд вниз)"); tags.push({ text: "< MA200", type: "bad" }); }
+      // --- КРАТКОСРОЧНЫЙ АНАЛИЗ ---
+      if (ma50) {
+        if (quote.price > ma50) { score += 10; shortSignal = "Покупать"; tags.push({ text: "> MA50", type: "good" }); }
+        else { score -= 10; shortSignal = "Избегать"; tags.push({ text: "< MA50", type: "bad" }); }
       }
-
       if (rsi !== null) {
         const rsiVal = Math.round(rsi);
         tags.push({ text: `RSI: ${rsiVal}`, type: rsiVal < 30 ? "good" : rsiVal > 70 ? "bad" : "neutral" });
-        if (rsi < 30) { score += 15; reasons.push("RSI < 30 (перепроданность)"); }
-        else if (rsi > 70) { score -= 15; reasons.push("RSI > 70 (перекупленность)"); }
+        if (rsi < 30) { score += 15; shortSignal = "Активно покупать (отскок)"; reasons.push("RSI < 30 (перепроданность)"); }
+        else if (rsi > 70) { score -= 15; shortSignal = "Продавать (перегрев)"; reasons.push("RSI > 70 (перекупленность)"); }
+      }
+
+      // --- ДОЛГОСРОЧНЫЙ АНАЛИЗ ---
+      if (ma200) {
+        if (quote.price > ma200) { score += 15; longSignal = "Покупать"; reasons.push("Выше MA200 (бычий тренд)"); }
+        else { score -= 15; longSignal = "Избегать"; reasons.push("Ниже MA200 (медвежий тренд)"); }
       }
     } else {
       tags.push({ text: "Мало данных", type: "neutral" });
@@ -731,12 +730,11 @@
 
     score = Math.max(0, Math.min(100, score));
     let recommendation = "Держать";
-    let horizon = quote.type === "bond" ? "До погашения" : "Среднесрок";
     
-    if (score >= 70) { recommendation = "Покупать"; horizon = quote.type === "bond" ? "Долгосрок" : "Долгосрок"; }
-    else if (score <= 30) { recommendation = "Избегать"; horizon = "Краткосрок"; }
+    if (score >= 70) recommendation = "Покупать";
+    else if (score <= 30) recommendation = "Избегать";
     
-    return { score: Math.round(score), recommendation, horizon, reasons, tags };
+    return { score: Math.round(score), recommendation, shortSignal, longSignal, reasons, tags };
   }
 
   const runAnalyticsBtn = $("#runAnalyticsBtn");
@@ -750,7 +748,7 @@
       runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем список...';
       analyticsEmpty.hidden = true;
       analyticsList.hidden = false;
-      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка списка 50 бумаг...</div></li>`;
+      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка списка бумаг...</div></li>`;
 
       try {
         const quotes = await fetchQuotes();
@@ -795,9 +793,12 @@
             <div class="analytics-score-bar">
               <div class="analytics-score-fill" style="width: ${item.score}%"></div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
               <span class="analytics-rec ${recClass}">${item.recommendation}</span>
-              <span style="font-size:12px; color:var(--text-mute);">${item.horizon}</span>
+            </div>
+            <div class="analytics-signals">
+              <span>Краткосрок: <b style="color:${item.shortSignal.includes('Покупать') || item.shortSignal.includes('Активно') ? 'var(--success)' : item.shortSignal.includes('Избегать') || item.shortSignal.includes('Продавать') ? 'var(--danger)' : 'var(--text)'}">${item.shortSignal}</b></span>
+              <span>Долгосрок: <b style="color:${item.longSignal.includes('Покупать') ? 'var(--success)' : item.longSignal.includes('Избегать') ? 'var(--danger)' : 'var(--text)'}">${item.longSignal}</b></span>
             </div>
             <div class="analytics-tags">${tagsHtml}</div>
             <div class="analytics-reasons">${item.reasons.join(" · ")}</div>
@@ -806,7 +807,7 @@
         });
       } catch (err) {
         console.error(err);
-        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные. Проверьте соединение.</li>';
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные.</li>';
         showToast("Ошибка загрузки аналитики", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
