@@ -53,7 +53,7 @@
         <div class="empty" id="debtsEmpty">
           <div class="empty-glyph">∅</div>
           <p class="empty-title">Пока пусто</p>
-          <p class="empty-text">Добавь первый долг — карту, кредит, рассрочку. Всё останется только у тебя на устройстве.</p>
+          <p class="empty-text">Добавь первый долг — карту, кредит, рассрочку.</p>
         </div>
 
         <ul class="debt-list" id="debtList" hidden></ul>
@@ -75,9 +75,7 @@
           <button class="seg" data-strategy="custom" type="button">Свой порядок</button>
         </div>
 
-        <p class="hint" id="strategyHint">
-          Лавина: сначала самый дорогой долг по ставке. Математически выгоднее всего.
-        </p>
+        <p class="hint" id="strategyHint">Лавина: сначала самый дорогой долг по ставке.</p>
 
         <div class="card">
           <label class="field">
@@ -87,13 +85,11 @@
               <span class="field-suffix">₽</span>
             </div>
           </label>
-          <p class="field-hint">Сколько сверх минимальных платежей готов вносить.</p>
         </div>
 
         <div class="empty" id="strategyEmpty">
           <div class="empty-glyph">◔</div>
           <p class="empty-title">Сначала добавь долги</p>
-          <p class="empty-text">Когда появится список, здесь покажем порядок закрытия.</p>
         </div>
 
         <ul class="tips" id="strategyTips"></ul>
@@ -137,15 +133,13 @@
         <div class="section-head">
           <h2>Рекомендации</h2>
         </div>
-        <ul class="tips" id="tips">
-          <li class="tip tip-mute">Добавь долги — здесь появятся расчётные подсказки.</li>
-        </ul>
+        <ul class="tips" id="tips"></ul>
 
         <div class="section-head">
           <h2>График остатка</h2>
         </div>
         <div class="chart-wrap card">
-          <canvas id="chart" width="600" height="220" aria-label="График остатка долга по месяцам"></canvas>
+          <canvas id="chart" width="600" height="220"></canvas>
           <p class="empty-inline" id="chartEmpty">Появится после расчёта.</p>
         </div>
 
@@ -153,7 +147,7 @@
           <h2>Лавина vs Снежный ком</h2>
         </div>
         <div class="chart-wrap card">
-          <canvas id="comparisonChart" width="600" height="220" aria-label="Сравнение стратегий"></canvas>
+          <canvas id="comparisonChart" width="600" height="220"></canvas>
         </div>
       </section>
 
@@ -195,17 +189,26 @@
           </div>
         </div>
 
-        <!-- Досрочное погашение -->
+        <!-- Досрочное погашение (ОБНОВЛЕНО) -->
         <div id="calcEarly" class="calc-panel" hidden>
           <div class="card">
             <label class="field"><span class="field-label">Остаток долга</span><div class="field-input"><input type="number" id="earlyBalance" placeholder="500000" /></div></label>
             <label class="field" style="margin-top:12px;"><span class="field-label">Ставка, % год.</span><div class="field-input"><input type="number" id="earlyRate" placeholder="18" /></div></label>
             <label class="field" style="margin-top:12px;"><span class="field-label">Текущий платёж</span><div class="field-input"><input type="number" id="earlyPayment" placeholder="15000" /></div></label>
             <label class="field" style="margin-top:12px;"><span class="field-label">Сумма досрочного</span><div class="field-input"><input type="number" id="earlyExtra" placeholder="100000" /></div></label>
+            
+            <div style="margin-top: 12px;">
+              <span class="field-label">Стратегия банка:</span>
+              <div class="segmented" id="earlyStrategySeg" style="margin-top: 6px;">
+                <button class="seg is-active" data-estrategy="term" type="button">Уменьшить срок</button>
+                <button class="seg" data-estrategy="payment" type="button">Уменьшить платёж</button>
+              </div>
+            </div>
+
             <button class="btn btn-primary" id="calcEarlyBtn" style="margin-top:16px;">Рассчитать</button>
           </div>
           <div class="card" id="earlyResult" hidden>
-            <div class="stat"><span class="stat-label">Новый срок</span><span class="stat-value num" id="earlyNewTerm">—</span></div>
+            <div class="stat"><span class="stat-label">Новый срок / Платёж</span><span class="stat-value num" id="earlyNewTerm">—</span></div>
             <div class="stat" style="margin-top:8px;"><span class="stat-label">Экономия на процентах</span><span class="stat-value num" id="earlySave">—</span></div>
           </div>
         </div>
@@ -213,20 +216,40 @@
 
       <!-- АНАЛИТИКА MOEX -->
       <section class="screen" data-screen="analytics">
+        <!-- ПОРТФЕЛЬ -->
+        <div id="portfolioBox" hidden>
+          <div class="section-head">
+            <h2>Мой портфель</h2>
+          </div>
+          <div class="card summary" style="border-color: var(--accent-line);">
+            <div class="summary-row" style="grid-template-columns: 1fr 1fr;">
+              <div class="stat">
+                <span class="stat-label">Стоимость</span>
+                <span class="stat-value num" id="portTotal">0 ₽</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Прибыль</span>
+                <span class="stat-value num" id="portPnl" style="color:var(--success)">0 ₽</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="section-head">
           <h2>Аналитика MOEX</h2>
           <span class="pill" id="analyticsCount">0</span>
         </div>
-        <p class="hint">Анализ 50 наиболее ликвидных российских акций и ОФЗ. Данные с задержкой ~15 минут.</p>
         
-        <button class="btn btn-primary" id="runAnalyticsBtn" type="button" style="margin-bottom: 16px;">
-          <span>⚡</span> Запустить анализ
-        </button>
+        <div style="display:flex; gap: 8px; margin-bottom: 16px;">
+          <button class="btn btn-primary" id="runAnalyticsBtn" type="button" style="flex:1;">
+            <span>⚡</span> Запустить анализ
+          </button>
+        </div>
         
         <div class="empty" id="analyticsEmpty">
           <div class="empty-glyph">📊</div>
           <p class="empty-title">Готов к анализу</p>
-          <p class="empty-text">Нажми кнопку выше, чтобы получить рекомендации по 50 бумагам.</p>
+          <p class="empty-text">Нажми кнопку выше, чтобы получить сигналы по 60 бумагам.</p>
         </div>
         
         <ul class="analytics-list" id="analyticsList" hidden></ul>
@@ -282,9 +305,6 @@
             <span class="row-chev">›</span>
           </button>
         </div>
-
-        <p class="hint">Данные хранятся только на этом устройстве. Никаких серверов и аккаунтов.</p>
-        <p class="hint hint-dim">Просвет · личный проект · не является финансовой рекомендацией.</p>
       </section>
 
     </main>
@@ -313,41 +333,41 @@
 
   <!-- МОДАЛКА ДОЛГА -->
   <div class="modal-backdrop" id="debtModal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h3 id="modalTitle">Новый долг</h3>
-        <button class="icon-btn" id="modalClose" type="button" aria-label="Закрыть">✕</button>
+        <button class="icon-btn" id="modalClose" type="button">✕</button>
       </div>
       <form id="debtForm" class="modal-form">
-        <label class="field">
-          <span class="field-label">Название</span>
-          <div class="field-input">
-            <input name="name" required maxlength="40" placeholder="Например, карта Тинькофф" />
-          </div>
-        </label>
+        <label class="field"><span class="field-label">Название</span><div class="field-input"><input name="name" required maxlength="40" placeholder="Карта" /></div></label>
         <div class="grid-2 modal-grid">
-          <label class="field">
-            <span class="field-label">Остаток</span>
-            <div class="field-input">
-              <input name="balance" type="number" inputmode="decimal" required min="0" step="0.01" placeholder="0" />
-            </div>
-          </label>
-          <label class="field">
-            <span class="field-label">Ставка, % год.</span>
-            <div class="field-input">
-              <input name="apr" type="number" inputmode="decimal" required min="0" step="0.1" placeholder="0" />
-            </div>
-          </label>
+          <label class="field"><span class="field-label">Остаток</span><div class="field-input"><input name="balance" type="number" required min="0" step="0.01" placeholder="0" /></div></label>
+          <label class="field"><span class="field-label">Ставка, %</span><div class="field-input"><input name="apr" type="number" required min="0" step="0.1" placeholder="0" /></div></label>
         </div>
-        <label class="field">
-          <span class="field-label">Минимальный платёж в месяц</span>
-          <div class="field-input">
-            <input name="minPayment" type="number" inputmode="decimal" required min="0" step="0.01" placeholder="0" />
-          </div>
-        </label>
+        <label class="field"><span class="field-label">Мин. платёж</span><div class="field-input"><input name="minPayment" type="number" required min="0" step="0.01" placeholder="0" /></div></label>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="debtCancel">Отмена</button>
           <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛКА ПОКУПКИ АКЦИИ -->
+  <div class="modal-backdrop" id="buyModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3 id="buyTitle">Купить</h3>
+        <button class="icon-btn" id="buyClose" type="button">✕</button>
+      </div>
+      <form id="buyForm" class="modal-form">
+        <div class="grid-2 modal-grid">
+          <label class="field"><span class="field-label">Количество (шт)</span><div class="field-input"><input name="qty" type="number" required min="1" step="1" placeholder="10" /></div></label>
+          <label class="field"><span class="field-label">Цена покупки</span><div class="field-input"><input name="price" type="number" required min="0" step="0.01" placeholder="0" /></div></label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="buyCancel">Отмена</button>
+          <button type="submit" class="btn btn-primary">Добавить</button>
         </div>
       </form>
     </div>
@@ -363,13 +383,7 @@
       <div class="details-scroll">
         <table class="amort-table">
           <thead>
-            <tr>
-              <th>Мес</th>
-              <th>Платёж</th>
-              <th>Проценты</th>
-              <th>Тело</th>
-              <th>Остаток</th>
-            </tr>
+            <tr><th>Мес</th><th>Платёж</th><th>Проценты</th><th>Тело</th><th>Остаток</th></tr>
           </thead>
           <tbody id="detailsBody"></tbody>
         </table>
@@ -380,7 +394,6 @@
     </div>
   </div>
 
-  <!-- TOAST УВЕДОМЛЕНИЯ -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="js/engine.js"></script>
