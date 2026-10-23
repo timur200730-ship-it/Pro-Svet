@@ -10,6 +10,8 @@
   let state = Storage.load();
   let lastResult = null;
   let currentDetailDebt = null;
+  let currentBuyTicker = null;
+  let latestQuotes = []; // Кеш последних котировок для портфеля
 
   /* ---------- Утилиты ---------- */
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -31,22 +33,13 @@
     }, 3000);
   }
 
-  /* ---------- Тема ---------- */
+  /* ---------- Тема и Навигация ---------- */
   const THEME_KEY = "prosvet.theme";
-  function applyTheme(t) {
-    root.setAttribute("data-theme", t);
-    const meta = $('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", t === "light" ? "#f6f4ee" : "#0b0b0e");
-    const icon = $(".theme-icon");
-    if (icon) icon.textContent = t === "light" ? "◑" : "◐";
-    try { localStorage.setItem(THEME_KEY, t); } catch {}
-  }
+  function applyTheme(t) { root.setAttribute("data-theme", t); const icon = $(".theme-icon"); if (icon) icon.textContent = t === "light" ? "◑" : "◐"; try { localStorage.setItem(THEME_KEY, t); } catch {} }
   function toggleTheme() { applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light"); }
-  let savedTheme = null;
-  try { savedTheme = localStorage.getItem(THEME_KEY); } catch {}
+  let savedTheme = null; try { savedTheme = localStorage.getItem(THEME_KEY); } catch {}
   applyTheme(savedTheme === "light" ? "light" : "dark");
 
-  /* ---------- Навигация ---------- */
   const screens = $$(".screen");
   const tabs = $$(".tab");
   function show(name) {
@@ -56,7 +49,7 @@
   }
   tabs.forEach(t => t.addEventListener("click", () => show(t.dataset.tab)));
 
-  /* ---------- Стратегия ---------- */
+  /* ---------- Долги ---------- */
   const segBtns = $$("#strategySeg .seg");
   const hint = $("#strategyHint");
   const hints = {
@@ -68,32 +61,20 @@
     state.settings.strategy = strategy;
     segBtns.forEach(b => b.classList.toggle("is-active", b.dataset.strategy === strategy));
     if (hint) hint.textContent = hints[strategy] || "";
-    persist();
-    render();
+    persist(); render();
   }
   segBtns.forEach(btn => btn.addEventListener("click", () => setStrategy(btn.dataset.strategy)));
 
-  /* ---------- Доп. платёж ---------- */
   const extraInput = $("#extraPayment");
   let extraTimer = null;
   extraInput.addEventListener("input", () => {
     clearTimeout(extraTimer);
     extraTimer = setTimeout(() => {
       state.settings.extraPayment = Math.max(0, Number(extraInput.value) || 0);
-      persist();
-      render();
+      persist(); render();
     }, 250);
   });
 
-  /* ---------- Валюта ---------- */
-  const currencySel = $("#currencySel");
-  currencySel.addEventListener("change", () => {
-    state.settings.currency = currencySel.value;
-    persist();
-    render();
-  });
-
-  /* ---------- Модалка долга ---------- */
   const modal = $("#debtModal");
   const modalTitle = $("#modalTitle");
   const form = $("#debtForm");
@@ -112,7 +93,6 @@
       modalTitle.textContent = "Новый долг";
     }
     modal.hidden = false;
-    setTimeout(() => form.elements.name.focus(), 30);
   }
   function closeModal() { modal.hidden = true; }
 
@@ -120,9 +100,6 @@
   $("#modalClose").addEventListener("click", closeModal);
   $("#debtCancel").addEventListener("click", closeModal);
   modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !modal.hidden) closeModal();
-  });
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -138,214 +115,129 @@
       const d = state.debts.find(x => x.id === editId);
       if (d) Object.assign(d, { name, balance, apr, minPayment });
     } else {
-      state.debts.push({
-        id: Storage.makeId(),
-        name, balance, apr, minPayment,
-        priority: state.debts.length,
-        createdAt: Date.now(),
-      });
+      state.debts.push({ id: Storage.makeId(), name, balance, apr, minPayment, priority: state.debts.length, createdAt: Date.now() });
     }
-    persist();
-    closeModal();
-    render();
+    persist(); closeModal(); render();
   });
 
-  /* ---------- Список долгов ---------- */
-  const debtList = $("#debtList");
-  const debtEmpty = $("#debtsEmpty");
-  const debtCount = $("#debtCount");
-
+  /* ---------- Рендер Долгов ---------- */
   function renderDebts() {
-    debtList.innerHTML = "";
-    debtCount.textContent = String(state.debts.length);
-    if (state.debts.length === 0) {
-      debtList.hidden = true;
-      debtEmpty.hidden = false;
-      return;
-    }
-    debtEmpty.hidden = true;
-    debtList.hidden = false;
+    const debtList = $("#debtList");
+    const debtEmpty = $("#debtsEmpty");
+    $("#debtCount").textContent = String(state.debts.length);
+    if (state.debts.length === 0) { debtList.hidden = true; debtEmpty.hidden = false; return; }
+    debtEmpty.hidden = true; debtList.hidden = false; debtList.innerHTML = "";
 
-    for (const d of state.debts) {
+    state.debts.forEach(d => {
       const li = document.createElement("li");
       li.className = "debt-card";
-      li.dataset.id = d.id;
       li.innerHTML = `
         <div class="debt-left">
           <div class="debt-name"></div>
-          <div class="debt-meta">
-            <span class="num">${d.apr}%</span> · мин. <span class="num">${money(d.minPayment)}</span>
-          </div>
+          <div class="debt-meta"><span class="num">${d.apr}%</span> · мин. <span class="num">${money(d.minPayment)}</span></div>
         </div>
         <div class="debt-right">
           <div class="debt-balance num">${money(d.balance)}</div>
-          <button class="debt-del" type="button" aria-label="Удалить долг">×</button>
+          <button class="debt-del" type="button">×</button>
         </div>
       `;
       li.querySelector(".debt-name").textContent = d.name;
-      
-      li.addEventListener("click", (e) => {
-        if (e.target.closest(".debt-del")) return;
-        openDetailsModal(d);
-      });
-      
+      li.addEventListener("click", (e) => { if (e.target.closest(".debt-del")) return; openDetailsModal(d); });
       li.querySelector(".debt-del").addEventListener("click", (e) => {
         e.stopPropagation();
         if (!confirm(`Удалить долг «${d.name}»?`)) return;
         state.debts = state.debts.filter(x => x.id !== d.id);
         state.debts.forEach((x, i) => { x.priority = i; });
-        persist();
-        render();
+        persist(); render();
       });
       debtList.appendChild(li);
-    }
+    });
   }
 
-  /* ---------- Сводка ---------- */
   function renderSummary() {
     const total = state.debts.reduce((s, d) => s + (Number(d.balance) || 0), 0);
     const minSum = state.debts.reduce((s, d) => s + (Number(d.minPayment) || 0), 0);
-    const weighted = total > 0
-      ? state.debts.reduce((s, d) => s + (Number(d.apr) || 0) * (Number(d.balance) || 0), 0) / total
-      : 0;
+    const weighted = total > 0 ? state.debts.reduce((s, d) => s + (Number(d.apr) || 0) * (Number(d.balance) || 0), 0) / total : 0;
     $("#sumTotal").textContent = money(total);
     $("#sumMin").textContent = money(minSum);
     $("#sumRate").textContent = (Math.round(weighted * 10) / 10) + "%";
   }
 
-  /* ---------- Результат ---------- */
+  /* ---------- Результаты и Графики ---------- */
   function renderResult() {
-    const result = Engine.simulate(state.debts, {
-      strategy: state.settings.strategy,
-      extraPayment: state.settings.extraPayment,
-    });
+    const result = Engine.simulate(state.debts, { strategy: state.settings.strategy, extraPayment: state.settings.extraPayment });
     lastResult = result;
-
-    const freedomDate = $("#freedomDate");
-    const freedomMonths = $("#freedomMonths");
-    const totalInterest = $("#totalInterest");
-    const totalPaid = $("#totalPaid");
-    const chartEmpty = $("#chartEmpty");
     const chart = $("#chart");
     const comparisonChart = $("#comparisonChart");
 
     if (state.debts.length === 0) {
-      freedomDate.textContent = "—";
-      freedomMonths.textContent = "0 месяцев";
-      totalInterest.textContent = money(0);
-      totalPaid.textContent = money(0);
-      chartEmpty.hidden = false;
-      chart.style.display = "none";
-      comparisonChart.style.display = "none";
-      $("#tips").innerHTML = '<li class="tip tip-mute">Добавь долги — здесь появятся расчётные подсказки.</li>';
-      $("#comparisonBox").hidden = true;
+      $("#freedomDate").textContent = "—"; $("#freedomMonths").textContent = "0 месяцев";
+      $("#totalInterest").textContent = money(0); $("#totalPaid").textContent = money(0);
+      $("#chartEmpty").hidden = false; chart.style.display = "none"; comparisonChart.style.display = "none";
+      $("#tips").innerHTML = '<li class="tip tip-mute">Добавь долги.</li>'; $("#comparisonBox").hidden = true;
       return;
     }
 
     if (result.unpaid.length > 0) {
-      freedomDate.textContent = "не закрывается";
-      freedomMonths.textContent = `${result.months}+ мес.`;
+      $("#freedomDate").textContent = "не закрывается"; $("#freedomMonths").textContent = `${result.months}+ мес.`;
     } else {
-      freedomDate.textContent = Engine.formatDate(result.freedomDate);
-      freedomMonths.textContent = `${result.months} ${Engine.pluralMonths(result.months)}`;
+      $("#freedomDate").textContent = Engine.formatDate(result.freedomDate); $("#freedomMonths").textContent = `${result.months} ${Engine.pluralMonths(result.months)}`;
     }
-    totalInterest.textContent = money(result.totalInterest);
-    totalPaid.textContent = money(result.totalPaid);
+    $("#totalInterest").textContent = money(result.totalInterest); $("#totalPaid").textContent = money(result.totalPaid);
 
     if (result.schedule.length > 1) {
-      chartEmpty.hidden = true;
-      chart.style.display = "block";
-      drawChart(result.schedule, chart);
-    } else {
-      chartEmpty.hidden = false;
-      chart.style.display = "none";
-    }
+      $("#chartEmpty").hidden = true; chart.style.display = "block"; drawChart(result.schedule, chart);
+    } else { $("#chartEmpty").hidden = false; chart.style.display = "none"; }
 
-    const tips = Engine.buildRecommendations(state.debts, result, {
-      currency: state.settings.currency,
-      strategy: state.settings.strategy,
-      extraPayment: state.settings.extraPayment,
-    });
-    const ul = $("#tips");
-    ul.innerHTML = "";
-    for (const t of tips) {
-      const li = document.createElement("li");
-      li.className = `tip tip-${t.type}`;
-      li.textContent = t.text;
-      ul.appendChild(li);
-    }
+    const tips = Engine.buildRecommendations(state.debts, result, { currency: state.settings.currency, strategy: state.settings.strategy, extraPayment: state.settings.extraPayment });
+    const ul = $("#tips"); ul.innerHTML = "";
+    tips.forEach(t => { const li = document.createElement("li"); li.className = `tip tip-${t.type}`; li.textContent = t.text; ul.appendChild(li); });
 
     renderComparison();
     if (result.schedule.length > 1) {
       const av = Engine.simulate(state.debts, { strategy: "avalanche", extraPayment: state.settings.extraPayment });
       const sb = Engine.simulate(state.debts, { strategy: "snowball", extraPayment: state.settings.extraPayment });
-      comparisonChart.style.display = "block";
-      drawComparisonChart(av.schedule, sb.schedule, comparisonChart);
+      comparisonChart.style.display = "block"; drawComparisonChart(av.schedule, sb.schedule, comparisonChart);
     }
   }
 
   function renderComparison() {
     const box = $("#comparisonBox");
-    if (!box) return;
     if (state.debts.length === 0) { box.hidden = true; return; }
     box.hidden = false;
-
     const av = Engine.simulate(state.debts, { strategy: "avalanche", extraPayment: state.settings.extraPayment });
     const sb = Engine.simulate(state.debts, { strategy: "snowball", extraPayment: state.settings.extraPayment });
-
     const fmtTime = (res) => res.unpaid.length > 0 ? "50+ лет" : `${res.months} мес.`;
-    $("#cmpAvalancheTime").textContent = fmtTime(av);
-    $("#cmpAvalancheInterest").textContent = `Переплата: ${money(av.totalInterest)}`;
-    $("#cmpSnowballTime").textContent = fmtTime(sb);
-    $("#cmpSnowballInterest").textContent = `Переплата: ${money(sb.totalInterest)}`;
+    $("#cmpAvalancheTime").textContent = fmtTime(av); $("#cmpAvalancheInterest").textContent = `Переплата: ${money(av.totalInterest)}`;
+    $("#cmpSnowballTime").textContent = fmtTime(sb); $("#cmpSnowballInterest").textContent = `Переплата: ${money(sb.totalInterest)}`;
   }
 
-  /* ---------- Стратегия — советы и стрелочки ---------- */
+  /* ---------- Стратегия ---------- */
   function renderStrategyScreen() {
-    const empty = $("#strategyEmpty");
-    const tips = $("#strategyTips");
-    if (state.debts.length === 0) {
-      empty.hidden = false;
-      tips.innerHTML = "";
-      return;
-    }
+    const empty = $("#strategyEmpty"); const tips = $("#strategyTips");
+    if (state.debts.length === 0) { empty.hidden = false; tips.innerHTML = ""; return; }
     empty.hidden = true;
     const order = Engine.orderDebts(state.debts, state.settings.strategy);
     tips.innerHTML = "";
-    
     order.forEach((d, i) => {
-      const li = document.createElement("li");
-      li.className = "tip";
-      
+      const li = document.createElement("li"); li.className = "tip";
       const arrows = state.settings.strategy === "custom" ? `
         <div class="order-arrows">
           <button class="arrow-btn" data-id="${d.id}" data-dir="up" ${i === 0 ? 'disabled' : ''}>↑</button>
           <button class="arrow-btn" data-id="${d.id}" data-dir="down" ${i === order.length - 1 ? 'disabled' : ''}>↓</button>
-        </div>
-      ` : '';
-
+        </div>` : '';
       li.innerHTML = `<div style="display:flex; align-items:center; gap:12px;">
         <span class="num" style="color:var(--accent); width:20px;">${i + 1}.</span> 
-        <span class="order-name" style="flex:1;"></span>
-        ${arrows}
-      </div>`;
-      
+        <span class="order-name" style="flex:1;"></span>${arrows}</div>`;
       li.querySelector(".order-name").textContent = d.name;
-      
       if (arrows) {
         li.querySelectorAll('.arrow-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const dir = e.target.dataset.dir;
+            const id = e.target.dataset.id; const dir = e.target.dataset.dir;
             const idx = state.debts.findIndex(x => x.id === id);
-            if (dir === 'up' && idx > 0) {
-              [state.debts[idx - 1], state.debts[idx]] = [state.debts[idx], state.debts[idx - 1]];
-            } else if (dir === 'down' && idx < state.debts.length - 1) {
-              [state.debts[idx + 1], state.debts[idx]] = [state.debts[idx], state.debts[idx + 1]];
-            }
-            state.debts.forEach((x, i) => { x.priority = i; });
-            persist();
-            render();
+            if (dir === 'up' && idx > 0) [state.debts[idx - 1], state.debts[idx]] = [state.debts[idx], state.debts[idx - 1]];
+            else if (dir === 'down' && idx < state.debts.length - 1) [state.debts[idx + 1], state.debts[idx]] = [state.debts[idx], state.debts[idx + 1]];
+            state.debts.forEach((x, i) => { x.priority = i; }); persist(); render();
           });
         });
       }
@@ -355,162 +247,58 @@
 
   /* ---------- Модалка детализации ---------- */
   const detailsModal = $("#detailsModal");
-  const detailsTitle = $("#detailsTitle");
-  const detailsBody = $("#detailsBody");
-
-  function closeDetailsModal() {
-    detailsModal.hidden = true;
-    currentDetailDebt = null;
-  }
-
+  function closeDetailsModal() { detailsModal.hidden = true; currentDetailDebt = null; }
   function openDetailsModal(debt) {
     if (!lastResult || !lastResult.schedule) return;
-    currentDetailDebt = debt;
-    detailsTitle.textContent = debt.name;
-
-    detailsBody.innerHTML = "";
+    currentDetailDebt = debt; $("#detailsTitle").textContent = debt.name;
+    const tbody = $("#detailsBody"); tbody.innerHTML = "";
     lastResult.schedule.forEach(monthRow => {
-      const debtData = monthRow.debts.find(x => x.id === debt.id);
-      if (debtData && (debtData.payment > 0 || debtData.remaining > 0)) {
+      const d = monthRow.debts.find(x => x.id === debt.id);
+      if (d && (d.payment > 0 || d.remaining > 0)) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${monthRow.month}</td>
-          <td class="num">${money(debtData.payment)}</td>
-          <td class="num" style="color:var(--danger)">${money(debtData.interest)}</td>
-          <td class="num" style="color:var(--success)">${money(debtData.principal)}</td>
-          <td class="num">${money(debtData.remaining)}</td>
-        `;
-        detailsBody.appendChild(tr);
+        tr.innerHTML = `<td>${monthRow.month}</td><td class="num">${money(d.payment)}</td><td class="num" style="color:var(--danger)">${money(d.interest)}</td><td class="num" style="color:var(--success)">${money(d.principal)}</td><td class="num">${money(d.remaining)}</td>`;
+        tbody.appendChild(tr);
       }
     });
-
     detailsModal.hidden = false;
   }
-
   $("#detailsClose").addEventListener("click", closeDetailsModal);
-  detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) closeDetailsModal(); });
-  $("#detailsEditBtn").addEventListener("click", () => {
-    if (currentDetailDebt) {
-      closeDetailsModal();
-      openDebtModal(currentDetailDebt);
-    }
-  });
+  $("#detailsEditBtn").addEventListener("click", () => { if (currentDetailDebt) { closeDetailsModal(); openDebtModal(currentDetailDebt); } });
 
-  /* ---------- Графики ---------- */
+  /* ---------- Графики (Canvas) ---------- */
   function drawChart(schedule, canvas) {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const W = Math.max(280, rect.width || 600);
-    const H = 220;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    const accent = getComputedStyle(root).getPropertyValue("--accent").trim() || "#d9b46a";
-    const line = getComputedStyle(root).getPropertyValue("--line").trim() || "#26262f";
-
-    const pad = { l: 8, r: 8, t: 16, b: 22 };
-    const cw = W - pad.l - pad.r;
-    const ch = H - pad.t - pad.b;
-    const maxVal = schedule[0].totalRemaining || 1;
-
-    const px = (i) => pad.l + (i / Math.max(1, schedule.length - 1)) * cw;
-    const py = (v) => pad.t + ch - (v / maxVal) * ch;
-
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 1;
-    for (let g = 1; g <= 3; g++) {
-      const y = pad.t + (ch / 3) * g;
-      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
-    }
-
-    const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
-    grad.addColorStop(0, accent + "55");
-    grad.addColorStop(1, accent + "00");
-    ctx.beginPath();
-    ctx.moveTo(px(0), H - pad.b);
-    schedule.forEach((m, i) => ctx.lineTo(px(i), py(m.totalRemaining)));
-    ctx.lineTo(px(schedule.length - 1), H - pad.b);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    ctx.beginPath();
-    schedule.forEach((m, i) => {
-      const x = px(i), y = py(m.totalRemaining);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = "round";
-    ctx.stroke();
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1; const rect = canvas.getBoundingClientRect();
+    const W = Math.max(280, rect.width || 600); const H = 220;
+    canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const accent = getComputedStyle(root).getPropertyValue("--accent").trim() || "#d9b46a"; const line = getComputedStyle(root).getPropertyValue("--line").trim() || "#26262f";
+    const pad = { l: 8, r: 8, t: 16, b: 22 }; const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b; const maxVal = schedule[0].totalRemaining || 1;
+    const px = (i) => pad.l + (i / Math.max(1, schedule.length - 1)) * cw; const py = (v) => pad.t + ch - (v / maxVal) * ch;
+    ctx.strokeStyle = line; ctx.lineWidth = 1;
+    for (let g = 1; g <= 3; g++) { const y = pad.t + (ch / 3) * g; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); }
+    const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b); grad.addColorStop(0, accent + "55"); grad.addColorStop(1, accent + "00");
+    ctx.beginPath(); ctx.moveTo(px(0), H - pad.b); schedule.forEach((m, i) => ctx.lineTo(px(i), py(m.totalRemaining))); ctx.lineTo(px(schedule.length - 1), H - pad.b); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); schedule.forEach((m, i) => { const x = px(i), y = py(m.totalRemaining); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
   }
 
-  function drawComparisonChart(avSchedule, sbSchedule, canvas) {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const W = Math.max(280, rect.width || 600);
-    const H = 220;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    const accent = getComputedStyle(root).getPropertyValue("--accent").trim() || "#d9b46a";
-    const success = getComputedStyle(root).getPropertyValue("--success").trim() || "#5bd49a";
-    const line = getComputedStyle(root).getPropertyValue("--line").trim() || "#26262f";
-
-    const pad = { l: 8, r: 8, t: 16, b: 22 };
-    const cw = W - pad.l - pad.r;
-    const ch = H - pad.t - pad.b;
-
-    const maxVal = Math.max(
-      avSchedule.length > 0 ? avSchedule[0].totalRemaining : 0,
-      sbSchedule.length > 0 ? sbSchedule[0].totalRemaining : 0
-    ) || 1;
-    const maxMonths = Math.max(avSchedule.length, sbSchedule.length);
-
-    const px = (i) => pad.l + (i / Math.max(1, maxMonths - 1)) * cw;
-    const py = (v) => pad.t + ch - (v / maxVal) * ch;
-
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 1;
-    for (let g = 1; g <= 3; g++) {
-      const y = pad.t + (ch / 3) * g;
-      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
-    }
-
-    ctx.beginPath();
-    avSchedule.forEach((m, i) => {
-      const x = px(i), y = py(m.totalRemaining);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = "round";
-    ctx.stroke();
-
-    ctx.beginPath();
-    sbSchedule.forEach((m, i) => {
-      const x = px(i), y = py(m.totalRemaining);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = success;
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([5, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+  function drawComparisonChart(avS, sbS, canvas) {
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1; const rect = canvas.getBoundingClientRect();
+    const W = Math.max(280, rect.width || 600); const H = 220; canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const accent = getComputedStyle(root).getPropertyValue("--accent").trim() || "#d9b46a"; const success = getComputedStyle(root).getPropertyValue("--success").trim() || "#5bd49a"; const line = getComputedStyle(root).getPropertyValue("--line").trim() || "#26262f";
+    const pad = { l: 8, r: 8, t: 16, b: 22 }; const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b;
+    const maxVal = Math.max(avS.length > 0 ? avS[0].totalRemaining : 0, sbS.length > 0 ? sbS[0].totalRemaining : 0) || 1;
+    const maxMonths = Math.max(avS.length, sbS.length);
+    const px = (i) => pad.l + (i / Math.max(1, maxMonths - 1)) * cw; const py = (v) => pad.t + ch - (v / maxVal) * ch;
+    ctx.strokeStyle = line; ctx.lineWidth = 1;
+    for (let g = 1; g <= 3; g++) { const y = pad.t + (ch / 3) * g; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); }
+    ctx.beginPath(); avS.forEach((m, i) => { const x = px(i), y = py(m.totalRemaining); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.strokeStyle = accent; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); sbS.forEach((m, i) => { const x = px(i), y = py(m.totalRemaining); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.strokeStyle = success; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
   }
 
-  /* ---------- Кредитные калькуляторы ---------- */
+  /* ---------- Кредитные калькуляторы (ИСПРАВЛЕНО) ---------- */
   const creditSegBtns = $$("#creditTypeSeg .seg");
   const calcPanels = $$(".calc-panel");
-
   creditSegBtns.forEach(btn => {
     btn.addEventListener("click", () => {
       const type = btn.dataset.type;
@@ -520,194 +308,183 @@
   });
 
   $("#calcMortBtn")?.addEventListener("click", () => {
-    const sum = Number($("#mortSum").value);
-    const rate = Number($("#mortRate").value) / 100 / 12;
-    const years = Number($("#mortYears").value);
+    const sum = Number($("#mortSum").value); const rate = Number($("#mortRate").value) / 100 / 12; const years = Number($("#mortYears").value);
     if (!sum || !rate || !years) return showToast("Заполните все поля", "error");
-    const months = years * 12;
-    const monthly = sum * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
-    const total = monthly * months;
-    $("#mortMonthly").textContent = money(monthly);
-    $("#mortOverpay").textContent = money(total - sum);
-    $("#mortResult").hidden = false;
+    const months = years * 12; const monthly = sum * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
+    $("#mortMonthly").textContent = money(monthly); $("#mortOverpay").textContent = money(monthly * months - sum); $("#mortResult").hidden = false;
   });
 
   $("#calcAutoBtn")?.addEventListener("click", () => {
-    const sum = Number($("#autoSum").value);
-    const rate = Number($("#autoRate").value) / 100 / 12;
-    const years = Number($("#autoYears").value);
+    const sum = Number($("#autoSum").value); const rate = Number($("#autoRate").value) / 100 / 12; const years = Number($("#autoYears").value);
     if (!sum || !rate || !years) return showToast("Заполните все поля", "error");
-    const months = years * 12;
-    const monthly = sum * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
-    const total = monthly * months;
-    $("#autoMonthly").textContent = money(monthly);
-    $("#autoOverpay").textContent = money(total - sum);
-    $("#autoResult").hidden = false;
+    const months = years * 12; const monthly = sum * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
+    $("#autoMonthly").textContent = money(monthly); $("#autoOverpay").textContent = money(monthly * months - sum); $("#autoResult").hidden = false;
   });
+
+  // Досрочное погашение - ТОЧНЫЙ РАСЧЕТ
+  let earlyStrategy = "term";
+  $$("#earlyStrategySeg .seg").forEach(btn => {
+    btn.addEventListener("click", () => {
+      earlyStrategy = btn.dataset.estrategy;
+      $$("#earlyStrategySeg .seg").forEach(b => b.classList.toggle("is-active", b === btn));
+    });
+  });
+
+  function simulateLoan(balance, rate, payment, extra) {
+    let bal = balance - extra;
+    let months = 0;
+    let totalInterest = 0;
+    // Ограничение на 600 месяцев (50 лет)
+    while (bal > 0.01 && months < 600) {
+      const interest = bal * rate;
+      const principal = payment - interest;
+      if (principal <= 0) return null; // Платеж не покрывает проценты
+      bal -= principal;
+      totalInterest += interest;
+      months++;
+    }
+    return { months, totalInterest, finalPayment: bal > 0 ? payment + bal : payment };
+  }
 
   $("#calcEarlyBtn")?.addEventListener("click", () => {
     const balance = Number($("#earlyBalance").value);
     const rate = Number($("#earlyRate").value) / 100 / 12;
     const payment = Number($("#earlyPayment").value);
     const extra = Number($("#earlyExtra").value);
+    
     if (!balance || !rate || !payment || !extra) return showToast("Заполните все поля", "error");
-    const monthlyInterest = balance * rate;
-    const principalPart = payment - monthlyInterest;
-    if (principalPart <= 0) return showToast("Платёж слишком мал", "error");
-    const monthsWithout = Math.log(payment / (payment - balance * rate)) / Math.log(1 + rate);
-    const newBalance = balance - extra;
-    const monthsWith = Math.log(payment / (payment - newBalance * rate)) / Math.log(1 + rate);
-    const savedMonths = Math.max(0, Math.round(monthsWithout - monthsWith));
-    const savedInterest = (monthsWithout - monthsWith) * payment - extra;
-    $("#earlyNewTerm").textContent = `-${savedMonths} мес.`;
-    $("#earlySave").textContent = money(Math.max(0, savedInterest));
+    if (extra >= balance) return showToast("Досрочный платеж больше долга", "error");
+
+    // Базовая линия
+    const base = simulateLoan(balance, rate, payment, 0);
+    if (!base) return showToast("Платёж слишком мал", "error");
+
+    if (earlyStrategy === "term") {
+      // Уменьшаем срок (платеж тот же)
+      const newSim = simulateLoan(balance, rate, payment, extra);
+      const savedMonths = base.months - newSim.months;
+      const savedInterest = base.totalInterest - newSim.totalInterest;
+      $("#earlyNewTerm").textContent = `-${savedMonths} мес.`;
+      $("#earlySave").textContent = money(Math.max(0, savedInterest));
+    } else {
+      // Уменьшаем платеж (срок тот же) - пересчитываем новый аннуитет на остаток срока
+      const newBalance = balance - extra;
+      const months = base.months;
+      const newMonthly = newBalance * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
+      
+      const newSim = simulateLoan(newBalance, rate, newMonthly, 0); // Проверка (должно совпасть с base.months)
+      const savedInterest = base.totalInterest - newSim.totalInterest;
+      
+      $("#earlyNewTerm").textContent = `${money(newMonthly)} / мес.`;
+      $("#earlySave").textContent = money(Math.max(0, savedInterest));
+    }
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX ---------- */
+  /* ---------- Аналитика MOEX + Портфель ---------- */
   
-  // 50 акций + 10 ОФЗ = 60 бумаг
-  const STOCKS = [
-    "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL",
-    "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL",
-    "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS",
-    "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "UGLD",
-    "POSI", "FLOT", "SPBE", "TGKA", "SVCB", "LENT", "MVID", "ASTR", "WUSH", "DIAS"
-  ];
-  
-  const BONDS = [
-    "SU26238RMFS4", "SU26243RMFS4", "SU26244RMFS4", "SU26245RMFS4", "SU26246RMFS4",
-    "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"
-  ];
+  const STOCKS = ["SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL", "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL", "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS", "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "UGLD", "POSI", "FLOT", "SPBE", "TGKA", "SVCB", "LENT", "MVID", "ASTR", "WUSH", "DIAS"];
+  const BONDS = ["SU26238RMFS4", "SU26243RMFS4", "SU26244RMFS4", "SU26245RMFS4", "SU26246RMFS4", "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"];
 
-  // Технический анализ
-  function calcSMA(closes, period) {
-    if (closes.length < period) return null;
-    const slice = closes.slice(-period);
-    return slice.reduce((a, b) => a + b, 0) / period;
-  }
-
+  function calcSMA(closes, period) { if (closes.length < period) return null; const slice = closes.slice(-period); return slice.reduce((a, b) => a + b, 0) / period; }
   function calcRSI(closes, period = 14) {
-    if (closes.length <= period) return null;
-    let gains = 0, losses = 0;
-    for (let i = 1; i <= period; i++) {
-      const diff = closes[closes.length - period + i - 1] - closes[closes.length - period + i - 2];
-      if (diff >= 0) gains += diff; else losses -= diff;
-    }
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-
-    for (let i = closes.length - period; i < closes.length; i++) {
-      const diff = closes[i] - closes[i - 1];
-      const gain = diff >= 0 ? diff : 0;
-      const loss = diff < 0 ? -diff : 0;
-      avgGain = (avgGain * (period - 1) + gain) / period;
-      avgLoss = (avgLoss * (period - 1) + loss) / period;
-    }
-    if (avgLoss === 0) return 100;
-    const rs = avgGain / avgLoss;
-    return 100 - (100 / (1 + rs));
+    if (closes.length <= period) return null; let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) { const diff = closes[closes.length - period + i - 1] - closes[closes.length - period + i - 2]; if (diff >= 0) gains += diff; else losses -= diff; }
+    let avgGain = gains / period, avgLoss = losses / period;
+    for (let i = closes.length - period; i < closes.length; i++) { const diff = closes[i] - closes[i - 1]; const gain = diff >= 0 ? diff : 0; const loss = diff < 0 ? -diff : 0; avgGain = (avgGain * (period - 1) + gain) / period; avgLoss = (avgLoss * (period - 1) + loss) / period; }
+    if (avgLoss === 0) return 100; const rs = avgGain / avgLoss; return 100 - (100 / (1 + rs));
   }
 
   async function fetchHistory(ticker, isBond) {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    const fromDate = d.toISOString().split('T')[0];
-    
-    const board = isBond ? "bonds" : "shares";
-    const boardId = isBond ? "TQOB" : "TQBR";
-    
+    const d = new Date(); d.setFullYear(d.getFullYear() - 1); const fromDate = d.toISOString().split('T')[0];
+    const board = isBond ? "bonds" : "shares"; const boardId = isBond ? "TQOB" : "TQBR";
     const url = `https://iss.moex.com/iss/history/engines/stock/markets/${board}/boards/${boardId}/securities/${ticker}.json?from=${fromDate}&iss.meta=off`;
-    
     try {
-      const res = await fetch(url);
-      if (!res.ok) return null;
-      const json = await res.json();
-      
-      const columns = json.history.columns;
-      const data = json.history.data;
-      const closeIdx = columns.indexOf("CLOSE");
-      
-      if (closeIdx === -1) return null;
-      
-      const closes = data.map(row => row[closeIdx]).filter(v => v !== null);
-      return closes;
-    } catch (e) {
-      return null;
-    }
+      const res = await fetch(url); if (!res.ok) return null; const json = await res.json();
+      const closeIdx = json.history.columns.indexOf("CLOSE"); if (closeIdx === -1) return null;
+      return json.history.data.map(row => row[closeIdx]).filter(v => v !== null);
+    } catch (e) { return null; }
   }
 
   async function fetchQuotes() {
-    const urlStocks = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata";
-    const urlBonds = "https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off&iss.only=marketdata";
+    const urlStocks = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata,securities";
+    const urlBonds = "https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off&iss.only=marketdata,securities";
 
     const [resStocks, resBonds] = await Promise.all([fetch(urlStocks), fetch(urlBonds)]);
-    if (!resStocks.ok || !resBonds.ok) throw new Error("Ошибка загрузки данных с MOEX");
-
-    const jsonStocks = await resStocks.json();
-    const jsonBonds = await resBonds.json();
-    
+    if (!resStocks.ok || !resBonds.ok) throw new Error("Ошибка MOEX");
+    const jsonStocks = await resStocks.json(); const jsonBonds = await resBonds.json();
     const quotes = [];
 
-    // Обработка акций (добавлен WAPRICE в качестве запасной цены)
-    const c1 = jsonStocks.marketdata.columns;
-    const d1 = jsonStocks.marketdata.data;
+    // Акции
+    const c1 = jsonStocks.marketdata.columns; const d1 = jsonStocks.marketdata.data;
     const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW"), WAPRICE: c1.indexOf("WAPRICE") };
+    
+    // Фундаментал (Дивиденды) - ищем в блоке securities
+    const sc1 = jsonStocks.securities.columns; const sd1 = jsonStocks.securities.data;
+    const sIdx1 = { SECID: sc1.indexOf("SECID"), DIVIDENDYIELD: sc1.indexOf("DIVIDENDYIELD") };
 
     for (const row of d1) {
-      const ticker = row[idx1.SECID];
-      if (!STOCKS.includes(ticker)) continue;
-      const last = row[idx1.LAST] || row[idx1.WAPRICE] || row[idx1.OPEN] || 0;
-      if (last === 0) continue;
-      quotes.push({
-        ticker, type: "stock", price: last,
-        changePercent: row[idx1.LASTCHANGEPRCNT] || 0,
-        high: row[idx1.HIGH] || last, low: row[idx1.LOW] || last
-      });
+      const ticker = row[idx1.SECID]; if (!STOCKS.includes(ticker)) continue;
+      const last = row[idx1.LAST] || row[idx1.WAPRICE] || row[idx1.OPEN] || 0; if (last === 0) continue;
+      // Ищем дивиденды
+      let divYield = 0;
+      if (sIdx1.DIVIDENDYIELD !== -1) {
+          const sRow = sd1.find(r => r[sIdx1.SECID] === ticker);
+          if (sRow) divYield = sRow[sIdx1.DIVIDENDYIELD] || 0;
+      }
+      quotes.push({ ticker, type: "stock", price: last, changePercent: row[idx1.LASTCHANGEPRCNT] || 0, high: row[idx1.HIGH] || last, low: row[idx1.LOW] || last, divYield });
     }
 
-    // Обработка облигаций
-    const c2 = jsonBonds.marketdata.columns;
-    const d2 = jsonBonds.marketdata.data;
+    // Облигации
+    const c2 = jsonBonds.marketdata.columns; const d2 = jsonBonds.marketdata.data;
     const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW"), WAPRICE: c2.indexOf("WAPRICE") };
+    
+    // Для облигаций YTM, Дюрация, НКД лежат в securities
+    const sc2 = jsonBonds.securities.columns; const sd2 = jsonBonds.securities.data;
+    const sIdx2 = { SECID: sc2.indexOf("SECID"), YIELDATPREVWAPRICE: sc2.indexOf("YIELDATPREVWAPRICE"), DURATION: sc2.indexOf("DURATION"), ACCRUEDINT: sc2.indexOf("ACCRUEDINT") };
 
     for (const row of d2) {
-      const ticker = row[idx2.SECID];
-      if (!BONDS.includes(ticker)) continue;
-      const last = row[idx2.LAST] || row[idx2.WAPRICE] || row[idx2.OPEN] || 0;
-      if (last === 0) continue;
-      quotes.push({
-        ticker, type: "bond", price: last * 10,
-        changePercent: row[idx2.LASTCHANGEPRCNT] || 0,
-        high: (row[idx2.HIGH] || last) * 10, low: (row[idx2.LOW] || last) * 10
-      });
+      const ticker = row[idx2.SECID]; if (!BONDS.includes(ticker)) continue;
+      const last = row[idx2.LAST] || row[idx2.WAPRICE] || row[idx2.OPEN] || 0; if (last === 0) continue;
+      
+      let ytm = 0, duration = 0, accrued = 0;
+      const sRow = sd2.find(r => r[sIdx2.SECID] === ticker);
+      if (sRow) {
+          ytm = sRow[sIdx2.YIELDATPREVWAPRICE] || 0;
+          duration = sRow[sIdx2.DURATION] || 0;
+          accrued = sRow[sIdx2.ACCRUEDINT] || 0;
+      }
+
+      quotes.push({ ticker, type: "bond", price: last * 10, changePercent: row[idx2.LASTCHANGEPRCNT] || 0, high: (row[idx2.HIGH] || last) * 10, low: (row[idx2.LOW] || last) * 10, ytm, duration, accrued });
     }
 
     return quotes;
   }
 
   function analyzeQuote(quote, closes) {
-    let score = 50;
-    let reasons = [];
-    let tags = [];
-    let shortSignal = "Нейтрально";
-    let longSignal = "Нейтрально";
+    let score = 50; let reasons = []; let tags = []; let shortSignal = "Нейтрально"; let longSignal = "Нейтрально"; let stopLoss = 0;
 
     if (quote.type === "bond") {
       tags.push({ text: "ОФЗ", type: "neutral" });
-      longSignal = "Держать до погашения";
+      tags.push({ text: `YTM: ${quote.ytm.toFixed(1)}%`, type: "good" });
+      tags.push({ text: `Дюр: ${quote.duration.toFixed(1)} г.`, type: "neutral" });
+      tags.push({ text: `НКД: ${quote.accrued.toFixed(1)} ₽`, type: "neutral" });
+      
+      if (quote.ytm > 12) score += 15; // Высокая доходность
+      longSignal = quote.ytm > 12 ? "Покупать (высокая YTM)" : "Держать";
+      shortSignal = "Только долгосрок";
+      reasons.push(`Доходность к погашению ${quote.ytm.toFixed(1)}%`);
+      return { score: Math.round(Math.max(0, Math.min(100, score))), recommendation: longSignal.includes('Покупать') ? 'Покупать' : 'Держать', shortSignal, longSignal, stopLoss, reasons, tags };
     }
 
-    // Дневная динамика
-    if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); }
-    else { score -= 5; reasons.push("Падение за день"); }
+    // Для акций
+    if (quote.divYield > 0) tags.push({ text: `Див: ${quote.divYield.toFixed(1)}%`, type: "good" });
+    
+    if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); } else { score -= 5; reasons.push("Падение за день"); }
 
     if (closes && closes.length > 20) {
-      const ma50 = calcSMA(closes, 50);
-      const ma200 = calcSMA(closes, 200);
-      const rsi = calcRSI(closes, 14);
+      const ma50 = calcSMA(closes, 50); const ma200 = calcSMA(closes, 200); const rsi = calcRSI(closes, 14);
 
-      // --- КРАТКОСРОЧНЫЙ АНАЛИЗ ---
       if (ma50) {
         if (quote.price > ma50) { score += 10; shortSignal = "Покупать"; tags.push({ text: "> MA50", type: "good" }); }
         else { score -= 10; shortSignal = "Избегать"; tags.push({ text: "< MA50", type: "bad" }); }
@@ -715,100 +492,156 @@
       if (rsi !== null) {
         const rsiVal = Math.round(rsi);
         tags.push({ text: `RSI: ${rsiVal}`, type: rsiVal < 30 ? "good" : rsiVal > 70 ? "bad" : "neutral" });
-        if (rsi < 30) { score += 15; shortSignal = "Активно покупать (отскок)"; reasons.push("RSI < 30 (перепроданность)"); }
-        else if (rsi > 70) { score -= 15; shortSignal = "Продавать (перегрев)"; reasons.push("RSI > 70 (перекупленность)"); }
+        if (rsi < 30) { score += 15; shortSignal = "Активно покупать"; reasons.push("RSI < 30 (перепроданность)"); }
+        else if (rsi > 70) { score -= 15; shortSignal = "Продавать"; reasons.push("RSI > 70 (перекупленность)"); }
       }
 
-      // --- ДОЛГОСРОЧНЫЙ АНАЛИЗ ---
       if (ma200) {
         if (quote.price > ma200) { score += 15; longSignal = "Покупать"; reasons.push("Выше MA200 (бычий тренд)"); }
         else { score -= 15; longSignal = "Избегать"; reasons.push("Ниже MA200 (медвежий тренд)"); }
       }
-    } else {
-      tags.push({ text: "Мало данных", type: "neutral" });
-    }
+    } else { tags.push({ text: "Мало данных", type: "neutral" }); }
 
     score = Math.max(0, Math.min(100, score));
     let recommendation = "Держать";
-    
-    if (score >= 70) recommendation = "Покупать";
-    else if (score <= 30) recommendation = "Избегать";
-    
-    return { score: Math.round(score), recommendation, shortSignal, longSignal, reasons, tags };
+    if (score >= 70) recommendation = "Покупать"; else if (score <= 30) recommendation = "Избегать";
+
+    // Стоп-лосс (только для краткосрока)
+    if (shortSignal.includes("Покупать") || shortSignal.includes("Активно")) {
+      stopLoss = quote.price * 0.95; // -5%
+    }
+
+    return { score: Math.round(score), recommendation, shortSignal, longSignal, stopLoss, reasons, tags };
   }
 
+  // --- Портфель ---
+  function renderPortfolio() {
+    const box = $("#portfolioBox");
+    if (state.portfolio.length === 0) { box.hidden = true; return; }
+    box.hidden = false;
+
+    let totalValue = 0;
+    let totalInvested = 0;
+
+    state.portfolio.forEach(p => {
+      const q = latestQuotes.find(x => x.ticker === p.ticker);
+      const currentPrice = q ? q.price : p.buyPrice; // Если нет данных, берем цену покупки
+      totalValue += currentPrice * p.qty;
+      totalInvested += p.buyPrice * p.qty;
+    });
+
+    const pnl = totalValue - totalInvested;
+    const pnlPercent = totalInvested > 0 ? (pnl / totalInvested) * 100 : 0;
+
+    $("#portTotal").textContent = money(totalValue);
+    const pnlEl = $("#portPnl");
+    pnlEl.textContent = `${pnl >= 0 ? '+' : ''}${money(pnl)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)`;
+    pnlEl.style.color = pnl >= 0 ? "var(--success)" : "var(--danger)";
+  }
+
+  const buyModal = $("#buyModal");
+  const buyForm = $("#buyForm");
+
+  function openBuyModal(ticker, price) {
+    currentBuyTicker = ticker;
+    $("#buyTitle").textContent = `Купить ${ticker}`;
+    buyForm.reset();
+    buyForm.elements.price.value = price.toFixed(2);
+    buyModal.hidden = false;
+  }
+  function closeBuyModal() { buyModal.hidden = true; currentBuyTicker = null; }
+
+  $("#buyClose").addEventListener("click", closeBuyModal);
+  $("#buyCancel").addEventListener("click", closeBuyModal);
+  buyModal.addEventListener("click", (e) => { if (e.target === buyModal) closeBuyModal(); });
+
+  buyForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const qty = Number(buyForm.elements.qty.value);
+    const price = Number(buyForm.elements.price.value);
+    if (!qty || !price || !currentBuyTicker) return;
+
+    const q = latestQuotes.find(x => x.ticker === currentBuyTicker);
+    const type = q && q.type === "bond" ? "bond" : "stock";
+
+    state.portfolio.push({
+      id: Storage.makeId(),
+      ticker: currentBuyTicker,
+      qty, buyPrice: price, type, date: Date.now()
+    });
+    persist();
+    closeBuyModal();
+    renderPortfolio();
+    showToast(`Куплено ${qty} шт. ${currentBuyTicker}`);
+  });
+
+  // --- Рендер аналитики ---
   const runAnalyticsBtn = $("#runAnalyticsBtn");
   const analyticsList = $("#analyticsList");
-  const analyticsEmpty = $("#analyticsEmpty");
-  const analyticsCount = $("#analyticsCount");
 
   if (runAnalyticsBtn) {
     runAnalyticsBtn.addEventListener("click", async () => {
       runAnalyticsBtn.disabled = true;
-      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем список...';
-      analyticsEmpty.hidden = true;
+      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем...';
+      $("#analyticsEmpty").hidden = true;
       analyticsList.hidden = false;
-      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка списка бумаг...</div></li>`;
+      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка бумаг...</div></li>`;
 
       try {
         const quotes = await fetchQuotes();
+        latestQuotes = quotes; // Сохраняем для портфеля
         
         const analyzed = [];
         for (let i = 0; i < quotes.length; i++) {
           const q = quotes[i];
-          analyticsList.innerHTML = `
-            <li class="loading-progress">
-              <div class="loading-spinner"></div>
-              <div>Анализ ${i + 1} из ${quotes.length} (${q.ticker})...</div>
-            </li>
-          `;
-          
-          const isBond = q.type === "bond";
-          const closes = await fetchHistory(q.ticker, isBond);
+          analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Анализ ${i + 1} из ${quotes.length} (${q.ticker})...</div></li>`;
+          const closes = await fetchHistory(q.ticker, q.type === "bond");
           const analysis = analyzeQuote(q, closes);
           analyzed.push({ ...q, ...analysis });
         }
 
         const results = analyzed.sort((a, b) => b.score - a.score);
         analyticsList.innerHTML = "";
-        analyticsCount.textContent = String(results.length);
+        $("#analyticsCount").textContent = String(results.length);
 
         results.forEach(item => {
           const li = document.createElement("li");
           li.className = "analytics-card";
           const changeClass = item.changePercent >= 0 ? "pos" : "neg";
           const changeSign = item.changePercent >= 0 ? "+" : "";
-          const recClass = item.recommendation.includes("Покупать") ? "rec-buy" 
-                         : item.recommendation.includes("Избегать") ? "rec-sell" 
-                         : "rec-hold";
-
+          const recClass = item.recommendation.includes("Покупать") ? "rec-buy" : item.recommendation.includes("Избегать") ? "rec-sell" : "rec-hold";
           const tagsHtml = item.tags.map(t => `<span class="tag tag-${t.type}">${t.text}</span>`).join("");
 
+          let signalsHtml = `<div class="analytics-signals"><span>Краткосрок: <b style="color:${item.shortSignal.includes('Покупать') || item.shortSignal.includes('Активно') ? 'var(--success)' : item.shortSignal.includes('Избегать') || item.shortSignal.includes('Продавать') ? 'var(--danger)' : 'var(--text)'}">${item.shortSignal}</b></span><span>Долгосрок: <b style="color:${item.longSignal.includes('Покупать') ? 'var(--success)' : item.longSignal.includes('Избегать') ? 'var(--danger)' : 'var(--text)'}">${item.longSignal}</b></span>`;
+          if (item.stopLoss > 0) signalsHtml += `<span style="margin-top:4px; font-size:11px; color:var(--danger)">Стоп-лосс: ${item.stopLoss.toFixed(2)} ₽</span>`;
+          signalsHtml += `</div>`;
+
           li.innerHTML = `
+            <button class="analytics-buy-btn" title="Добавить в портфель">+</button>
             <div class="analytics-header">
               <span class="analytics-ticker">${item.ticker}</span>
               <span class="analytics-price">${item.price.toFixed(2)} ₽</span>
               <span class="analytics-change ${changeClass}">${changeSign}${item.changePercent.toFixed(2)}%</span>
             </div>
-            <div class="analytics-score-bar">
-              <div class="analytics-score-fill" style="width: ${item.score}%"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+            <div class="analytics-score-bar"><div class="analytics-score-fill" style="width: ${item.score}%"></div></div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
               <span class="analytics-rec ${recClass}">${item.recommendation}</span>
             </div>
-            <div class="analytics-signals">
-              <span>Краткосрок: <b style="color:${item.shortSignal.includes('Покупать') || item.shortSignal.includes('Активно') ? 'var(--success)' : item.shortSignal.includes('Избегать') || item.shortSignal.includes('Продавать') ? 'var(--danger)' : 'var(--text)'}">${item.shortSignal}</b></span>
-              <span>Долгосрок: <b style="color:${item.longSignal.includes('Покупать') ? 'var(--success)' : item.longSignal.includes('Избегать') ? 'var(--danger)' : 'var(--text)'}">${item.longSignal}</b></span>
-            </div>
+            ${signalsHtml}
             <div class="analytics-tags">${tagsHtml}</div>
             <div class="analytics-reasons">${item.reasons.join(" · ")}</div>
           `;
+          
+          li.querySelector(".analytics-buy-btn").addEventListener("click", () => openBuyModal(item.ticker, item.price));
           analyticsList.appendChild(li);
         });
+
+        renderPortfolio(); // Обновляем портфель после загрузки новых цен!
+
       } catch (err) {
         console.error(err);
-        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Не удалось загрузить данные.</li>';
-        showToast("Ошибка загрузки аналитики", "error");
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Ошибка загрузки данных.</li>';
+        showToast("Ошибка MOEX", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
         runAnalyticsBtn.innerHTML = '<span>⚡</span> Обновить анализ';
@@ -816,97 +649,37 @@
     });
   }
 
-  /* ---------- PWA: Установка ---------- */
+  /* ---------- PWA, Настройки, Старт ---------- */
   let deferredPrompt = null;
-  const installBox = $("#installBox");
-  const installBtn = $("#installBtn");
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; $("#installBox").hidden = false; });
+  $("#installBtn")?.addEventListener('click', async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; $("#installBox").hidden = true; });
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (installBox) installBox.hidden = false;
-  });
+  if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); }); }
 
-  if (installBtn) {
-    installBtn.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') showToast("Просвет установлен!");
-      deferredPrompt = null;
-      installBox.hidden = true;
-    });
-  }
-
-  window.addEventListener('appinstalled', () => {
-    showToast("Приложение добавлено на экран!");
-    if (installBox) installBox.hidden = true;
-  });
-
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg failed', err));
-    });
-  }
-
-  /* ---------- Импорт / экспорт / сброс ---------- */
   $("#exportBtn").addEventListener("click", () => Storage.exportJson(state));
   $("#importBtn").addEventListener("click", () => $("#importFile").click());
   $("#importFile").addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+    const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    try {
-      const next = await Storage.importFile(file);
-      state = next;
-      persist();
-      syncInputs();
-      render();
-      showToast("Данные успешно загружены");
-    } catch (err) {
-      showToast(err.message, "error");
-    }
+    try { state = await Storage.importFile(file); persist(); syncInputs(); render(); showToast("Данные загружены"); } catch (err) { showToast(err.message, "error"); }
   });
   $("#resetBtn").addEventListener("click", () => {
-    if (!confirm("Сбросить все долги и настройки? Действие необратимо.")) return;
-    state = Storage.reset();
-    syncInputs();
-    render();
-    showToast("Все данные сброшены");
+    if (!confirm("Сбросить всё?")) return;
+    state = Storage.reset(); syncInputs(); render(); showToast("Сброшено");
   });
 
-  /* ---------- Синхронизация и Старт ---------- */
   function syncInputs() {
     extraInput.value = state.settings.extraPayment || "";
-    currencySel.value = state.settings.currency;
+    $("#currencySel").value = state.settings.currency;
     segBtns.forEach(b => b.classList.toggle("is-active", b.dataset.strategy === state.settings.strategy));
     hint.textContent = hints[state.settings.strategy] || "";
   }
 
-  function render() {
-    renderDebts();
-    renderSummary();
-    renderStrategyScreen();
-    renderResult();
-  }
+  function render() { renderDebts(); renderSummary(); renderStrategyScreen(); renderResult(); renderPortfolio(); }
 
   $("#themeBtn").addEventListener("click", toggleTheme);
   $("#themeBtn2").addEventListener("click", toggleTheme);
+  $("#currencySel").addEventListener("change", () => { state.settings.currency = $("#currencySel").value; persist(); render(); });
 
-  syncInputs();
-  show("debts");
-  render();
-
-  let rzTimer = null;
-  window.addEventListener("resize", () => {
-    clearTimeout(rzTimer);
-    rzTimer = setTimeout(() => {
-      if (lastResult && lastResult.schedule.length > 1) {
-        drawChart(lastResult.schedule, $("#chart"));
-        const av = Engine.simulate(state.debts, { strategy: "avalanche", extraPayment: state.settings.extraPayment });
-        const sb = Engine.simulate(state.debts, { strategy: "snowball", extraPayment: state.settings.extraPayment });
-        drawComparisonChart(av.schedule, sb.schedule, $("#comparisonChart"));
-      }
-    }, 150);
-  });
+  syncInputs(); show("debts"); render();
 })();
