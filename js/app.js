@@ -1,4 +1,4 @@
-/* Просвет — UI, события, связка движка, хранилища и экранов + Мой первый капитал */
+/* Просвет — UI, события, связка движка, хранилища и экранов + Стабильная аналитика MOEX */
 (function () {
   "use strict";
 
@@ -11,7 +11,7 @@
   let lastResult = null;
   let currentDetailDebt = null;
   let currentBuyTicker = null;
-  let latestQuotes = []; // Кеш последних котировок для портфеля и виджета
+  let latestQuotes = [];
 
   /* ---------- Утилиты ---------- */
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -376,37 +376,16 @@
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX + Портфель ---------- (Включая БПИФы и паи) */
+  /* ---------- Аналитика MOEX (Стабильная версия без запросов истории) ---------- */
   const STOCKS = [
     "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL", 
     "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL", 
     "IRAO", "HYDR", "FEES", "RSTI", "TRNFP", "AFLT", "UPRO", "MSNG", "CBOM", "AFKS", 
     "PIKK", "LSRG", "RTKM", "MGTS", "KMAZ", "SVAV", "BLNG", "SGZH", "VKCO", "UGLD", 
     "POSI", "FLOT", "SPBE", "TGKA", "SVCB", "LENT", "MVID", "ASTR", "WUSH", "DIAS",
-    // Популярные биржевые фонды (БПИФы / паи) с доступной ценой для микроинвестиций
     "SBMX", "EQMX", "TMOS", "SBGB", "GOLD", "LQDT"
   ];
   const BONDS = ["SU26238RMFS4", "SU26243RMFS4", "SU26244RMFS4", "SU26245RMFS4", "SU26246RMFS4", "SU26247RMFS4", "SU26248RMFS4", "SU26249RMFS4", "SU26250RMFS4", "SU26251RMFS4"];
-
-  function calcSMA(closes, period) { if (closes.length < period) return null; const slice = closes.slice(-period); return slice.reduce((a, b) => a + b, 0) / period; }
-  function calcRSI(closes, period = 14) {
-    if (closes.length <= period) return null; let gains = 0, losses = 0;
-    for (let i = 1; i <= period; i++) { const diff = closes[closes.length - period + i - 1] - closes[closes.length - period + i - 2]; if (diff >= 0) gains += diff; else losses -= diff; }
-    let avgGain = gains / period, avgLoss = losses / period;
-    for (let i = closes.length - period; i < closes.length; i++) { const diff = closes[i] - closes[i - 1]; const gain = diff >= 0 ? diff : 0; const loss = diff < 0 ? -diff : 0; avgGain = (avgGain * (period - 1) + gain) / period; avgLoss = (avgLoss * (period - 1) + loss) / period; }
-    if (avgLoss === 0) return 100; const rs = avgGain / avgLoss; return 100 - (100 / (1 + rs));
-  }
-
-  async function fetchHistory(ticker, isBond) {
-    const d = new Date(); d.setFullYear(d.getFullYear() - 1); const fromDate = d.toISOString().split('T')[0];
-    const board = isBond ? "bonds" : "shares"; const boardId = isBond ? "TQOB" : "TQBR";
-    const url = `https://iss.moex.com/iss/history/engines/stock/markets/${board}/boards/${boardId}/securities/${ticker}.json?from=${fromDate}&iss.meta=off`;
-    try {
-      const res = await fetch(url); if (!res.ok) return null; const json = await res.json();
-      const closeIdx = json.history.columns.indexOf("CLOSE"); if (closeIdx === -1) return null;
-      return json.history.data.map(row => row[closeIdx]).filter(v => v !== null);
-    } catch (e) { return null; }
-  }
 
   async function fetchQuotes() {
     const urlStocks = "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&iss.only=marketdata,securities";
@@ -418,7 +397,7 @@
     const quotes = [];
 
     const c1 = jsonStocks.marketdata.columns; const d1 = jsonStocks.marketdata.data;
-    const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW"), WAPRICE: c1.indexOf("WAPRICE") };
+    const idx1 = { SECID: c1.indexOf("SECID"), LAST: c1.indexOf("LAST"), LASTCHANGEPRCNT: c1.indexOf("LASTCHANGEPRCNT"), OPEN: c1.indexOf("OPEN"), HIGH: c1.indexOf("HIGH"), LOW: c1.indexOf("LOW"), WAPRICE: c1.indexOf("WAPRICE"), VALTODAY: c1.indexOf("VALTODAY") };
     
     const sc1 = jsonStocks.securities.columns; const sd1 = jsonStocks.securities.data;
     const sIdx1 = { SECID: sc1.indexOf("SECID"), DIVIDENDYIELD: sc1.indexOf("DIVIDENDYIELD") };
@@ -431,11 +410,20 @@
           const sRow = sd1.find(r => r[sIdx1.SECID] === ticker);
           if (sRow) divYield = sRow[sIdx1.DIVIDENDYIELD] || 0;
       }
-      quotes.push({ ticker, type: "stock", price: last, changePercent: row[idx1.LASTCHANGEPRCNT] || 0, high: row[idx1.HIGH] || last, low: row[idx1.LOW] || last, divYield });
+      quotes.push({ 
+        ticker, 
+        type: "stock", 
+        price: last, 
+        changePercent: row[idx1.LASTCHANGEPRCNT] || 0, 
+        high: row[idx1.HIGH] || last, 
+        low: row[idx1.LOW] || last, 
+        volume: row[idx1.VALTODAY] || 0,
+        divYield 
+      });
     }
 
     const c2 = jsonBonds.marketdata.columns; const d2 = jsonBonds.marketdata.data;
-    const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW"), WAPRICE: c2.indexOf("WAPRICE") };
+    const idx2 = { SECID: c2.indexOf("SECID"), LAST: c2.indexOf("LAST"), LASTCHANGEPRCNT: c2.indexOf("LASTCHANGEPRCNT"), OPEN: c2.indexOf("OPEN"), HIGH: c2.indexOf("HIGH"), LOW: c2.indexOf("LOW"), WAPRICE: c2.indexOf("WAPRICE"), VALTODAY: c2.indexOf("VALTODAY") };
     
     const sc2 = jsonBonds.securities.columns; const sd2 = jsonBonds.securities.data;
     const sIdx2 = { SECID: sc2.indexOf("SECID"), YIELDATPREVWAPRICE: sc2.indexOf("YIELDATPREVWAPRICE"), DURATION: sc2.indexOf("DURATION"), ACCRUEDINT: sc2.indexOf("ACCRUEDINT") };
@@ -452,64 +440,92 @@
           accrued = sRow[sIdx2.ACCRUEDINT] || 0;
       }
 
-      quotes.push({ ticker, type: "bond", price: last * 10, changePercent: row[idx2.LASTCHANGEPRCNT] || 0, high: (row[idx2.HIGH] || last) * 10, low: (row[idx2.LOW] || last) * 10, ytm, duration, accrued });
+      quotes.push({ 
+        ticker, 
+        type: "bond", 
+        price: last * 10, 
+        changePercent: row[idx2.LASTCHANGEPRCNT] || 0, 
+        high: (row[idx2.HIGH] || last) * 10, 
+        low: (row[idx2.LOW] || last) * 10, 
+        volume: row[idx2.VALTODAY] || 0,
+        ytm, duration, accrued 
+      });
     }
 
     return quotes;
   }
 
-  function analyzeQuote(quote, closes) {
-    let score = 50; let reasons = []; let tags = []; let shortSignal = "Нейтрально"; let longSignal = "Нейтрально"; let stopLoss = 0;
+  function analyzeQuote(quote) {
+    let score = 50; 
+    let reasons = []; 
+    let tags = []; 
+    let shortSignal = "Нейтрально"; 
+    let longSignal = "Нейтрально"; 
+    let stopLoss = 0;
 
     if (quote.type === "bond") {
       tags.push({ text: "ОФЗ", type: "neutral" });
       tags.push({ text: `YTM: ${quote.ytm.toFixed(1)}%`, type: "good" });
       tags.push({ text: `Дюр: ${quote.duration.toFixed(1)} г.`, type: "neutral" });
-      tags.push({ text: `НКД: ${quote.accrued.toFixed(1)} ₽`, type: "neutral" });
       
       if (quote.ytm > 12) score += 15;
       longSignal = quote.ytm > 12 ? "Покупать (высокая YTM)" : "Держать";
-      shortSignal = "Только долгосрок";
+      shortSignal = "Долгосрок";
       reasons.push(`Доходность к погашению ${quote.ytm.toFixed(1)}%`);
       return { score: Math.round(Math.max(0, Math.min(100, score))), recommendation: longSignal.includes('Покупать') ? 'Покупать' : 'Держать', shortSignal, longSignal, stopLoss, reasons, tags };
     }
 
     if (quote.divYield > 0) tags.push({ text: `Див: ${quote.divYield.toFixed(1)}%`, type: "good" });
     
-    if (quote.changePercent > 0) { score += 5; reasons.push("Рост за день"); } else { score -= 5; reasons.push("Падение за день"); }
+    // Анализ на основе дневного изменения и положения в диапазоне
+    if (quote.changePercent > 1.0) {
+      score += 15;
+      reasons.push("Сильный дневной рост");
+      shortSignal = "Покупать";
+    } else if (quote.changePercent > 0) {
+      score += 8;
+      reasons.push("Умеренный плюс за день");
+      shortSignal = "Держать";
+    } else if (quote.changePercent < -1.0) {
+      score -= 15;
+      reasons.push("Заметная просадка");
+      shortSignal = "Избегать";
+    } else {
+      score -= 5;
+      reasons.push("Флэт / слабая динамика");
+    }
 
-    if (closes && closes.length > 20) {
-      const ma50 = calcSMA(closes, 50); const ma200 = calcSMA(closes, 200); const rsi = calcRSI(closes, 14);
+    if (quote.high > quote.low) {
+      const pos = (quote.price - quote.low) / (quote.high - quote.low);
+      if (pos >= 0.7) {
+        score += 10;
+        reasons.push("Закрытие у максимумов дня");
+        tags.push({ text: "Сила дня", type: "good" });
+      } else if (pos <= 0.3) {
+        score -= 10;
+        reasons.push("Давление продавцов");
+        tags.push({ text: "Слабость", type: "bad" });
+      }
+    }
 
-      if (ma50) {
-        if (quote.price > ma50) { score += 10; shortSignal = "Покупать"; tags.push({ text: "> MA50", type: "good" }); }
-        else { score -= 10; shortSignal = "Избегать"; tags.push({ text: "< MA50", type: "bad" }); }
-      }
-      if (rsi !== null) {
-        const rsiVal = Math.round(rsi);
-        tags.push({ text: `RSI: ${rsiVal}`, type: rsiVal < 30 ? "good" : rsiVal > 70 ? "bad" : "neutral" });
-        if (rsi < 30) { score += 15; shortSignal = "Активно покупать"; reasons.push("RSI < 30 (перепроданность)"); }
-        else if (rsi > 70) { score -= 15; shortSignal = "Продавать"; reasons.push("RSI > 70 (перекупленность)"); }
-      }
-
-      if (ma200) {
-        if (quote.price > ma200) { score += 15; longSignal = "Покупать"; reasons.push("Выше MA200 (бычий тренд)"); }
-        else { score -= 15; longSignal = "Избегать"; reasons.push("Ниже MA200 (медвежий тренд)"); }
-      }
-    } else { tags.push({ text: "Мало данных", type: "neutral" }); }
+    if (quote.volume > 100_000_000) {
+      score += 5;
+      tags.push({ text: "Ликвидно", type: "neutral" });
+    }
 
     score = Math.max(0, Math.min(100, score));
     let recommendation = "Держать";
-    if (score >= 70) recommendation = "Покупать"; else if (score <= 30) recommendation = "Избегать";
+    if (score >= 65) recommendation = "Покупать"; 
+    else if (score <= 35) recommendation = "Избегать";
 
-    if (shortSignal.includes("Покупать") || shortSignal.includes("Активно")) {
+    if (shortSignal === "Покупать") {
       stopLoss = quote.price * 0.95;
     }
 
-    return { score: Math.round(score), recommendation, shortSignal, longSignal, stopLoss, reasons, tags };
+    return { score: Math.round(score), recommendation, shortSignal, longSignal: score >= 60 ? "Покупать" : "Держать", stopLoss, reasons, tags };
   }
 
-  // --- Портфель ---
+  /* ---------- Портфель ---------- */
   function renderPortfolio() {
     const box = $("#portfolioBox");
     if (state.portfolio.length === 0) { box.hidden = true; return; }
@@ -570,40 +586,27 @@
     showToast(`Куплено ${qty} шт. ${currentBuyTicker}`);
   });
 
-  // --- Рендер аналитики (с оптимизированными батчами) ---
+  /* ---------- Мгновенный запуск аналитики MOEX ---------- */
   const runAnalyticsBtn = $("#runAnalyticsBtn");
   const analyticsList = $("#analyticsList");
 
   if (runAnalyticsBtn) {
     runAnalyticsBtn.addEventListener("click", async () => {
       runAnalyticsBtn.disabled = true;
-      runAnalyticsBtn.innerHTML = '<span>⏳</span> Скачиваем...';
+      runAnalyticsBtn.innerHTML = '<span>⏳</span> Загрузка...';
       $("#analyticsEmpty").hidden = true;
       analyticsList.hidden = false;
-      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка бумаг и фондов...</div></li>`;
+      analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Получение данных с биржи...</div></li>`;
 
       try {
         const quotes = await fetchQuotes();
         latestQuotes = quotes; 
-        window.latestQuotes = quotes; // Экспортируем глобально для виджета капитала
+        window.latestQuotes = quotes;
         
-        const analyzed = [];
-        const batchSize = 10;
-        
-        for (let i = 0; i < quotes.length; i += batchSize) {
-          const batch = quotes.slice(i, i + batchSize);
-          const currentEnd = Math.min(i + batchSize, quotes.length);
-          
-          analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Анализ бумаг (${i + 1}-${currentEnd} из ${quotes.length})...</div></li>`;
-          
-          const batchResults = await Promise.all(batch.map(async (q) => {
-            const closes = await fetchHistory(q.ticker, q.type === "bond");
-            const analysis = analyzeQuote(q, closes);
-            return { ...q, ...analysis };
-          }));
-          
-          analyzed.push(...batchResults);
-        }
+        const analyzed = quotes.map(q => {
+          const analysis = analyzeQuote(q);
+          return { ...q, ...analysis };
+        });
 
         const results = analyzed.sort((a, b) => b.score - a.score);
         analyticsList.innerHTML = "";
@@ -617,9 +620,8 @@
           const recClass = item.recommendation.includes("Покупать") ? "rec-buy" : item.recommendation.includes("Избегать") ? "rec-sell" : "rec-hold";
           const tagsHtml = item.tags.map(t => `<span class="tag tag-${t.type}">${t.text}</span>`).join("");
 
-          let signalsHtml = `<div class="analytics-signals"><span>Краткосрок: <b style="color:${item.shortSignal.includes('Покупать') || item.shortSignal.includes('Активно') ? 'var(--success)' : item.shortSignal.includes('Избегать') || item.shortSignal.includes('Продавать') ? 'var(--danger)' : 'var(--text)'}">${item.shortSignal}</b></span><span>Долгосрок: <b style="color:${item.longSignal.includes('Покупать') ? 'var(--success)' : item.longSignal.includes('Избегать') ? 'var(--danger)' : 'var(--text)'}">${item.longSignal}</b></span>`;
-          if (item.stopLoss > 0) signalsHtml += `<span style="margin-top:4px; font-size:11px; color:var(--danger)">Стоп-лосс: ${item.stopLoss.toFixed(2)} ₽</span>`;
-          signalsHtml += `</div>`;
+          let signalsHtml = `<div class="analytics-signals"><span>Сигнал: <b style="color:${item.shortSignal.includes('Покупать') ? 'var(--success)' : item.shortSignal.includes('Избегать') ? 'var(--danger)' : 'var(--text)'}">${item.shortSignal}</b></span></div>`;
+          if (item.stopLoss > 0) signalsHtml += `<span style="font-size:11px; color:var(--danger)">Стоп-лосс: ${item.stopLoss.toFixed(2)} ₽</span>`;
 
           li.innerHTML = `
             <button class="analytics-buy-btn" title="Добавить в портфель">+</button>
@@ -642,14 +644,13 @@
         });
 
         renderPortfolio();
-        // Обновляем виджет капитала после получения котировок
         if (typeof window.updateMicroWidgetSignals === "function") {
           window.updateMicroWidgetSignals();
         }
 
       } catch (err) {
         console.error(err);
-        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Ошибка загрузки данных.</li>';
+        analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Ошибка загрузки данных с MOEX.</li>';
         showToast("Ошибка MOEX", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
@@ -658,7 +659,7 @@
     });
   }
 
-  /* ---------- Виджет: Мой первый капитал со 100 ₽ + Трекер и Сигналы ---------- */
+  /* ---------- Виджет: Мой первый капитал со 100 ₽ ---------- */
   function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
     const weeks = years * 52;
     const weeklyRate = annualRate / 100 / 52;
@@ -701,14 +702,10 @@
     if (weekCheck) {
       weekCheck.checked = localStorage.getItem(checkKey) === "true";
       updateTrackerStatus();
-      
-      weekCheck.removeEventListener("change", handleCheckChange);
-      weekCheck.addEventListener("change", handleCheckChange);
-    }
-
-    function handleCheckChange() {
-      localStorage.setItem(checkKey, weekCheck.checked);
-      updateTrackerStatus();
+      weekCheck.onchange = () => {
+        localStorage.setItem(checkKey, weekCheck.checked);
+        updateTrackerStatus();
+      };
     }
 
     function updateTrackerStatus() {
@@ -756,13 +753,10 @@
       if (el) el.oninput = update;
     });
 
-    // Экспортируем функцию обновления сигналов наружу
     window.updateMicroWidgetSignals = update;
-
     update();
   }
 
-  // Запуск инициализации виджета
   if (document.readyState === "complete" || document.readyState === "interactive") {
     setTimeout(initMicroInvestWidget, 50);
   } else {
