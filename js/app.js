@@ -918,13 +918,19 @@
 
         renderPortfolio();
 
-      } catch (err) {
+        } catch (err) {
         console.error(err);
         analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Ошибка загрузки данных.</li>';
         showToast("Ошибка MOEX", "error");
       } finally {
         runAnalyticsBtn.disabled = false;
         runAnalyticsBtn.innerHTML = '<span>⚡</span> Обновить анализ';
+
+        // Авто-обновление виджета микроинвестиций, чтобы идеи подтянулись сразу
+        if (typeof initMicroInvestWidget === "function") {
+          const miWeekly = document.getElementById("miWeekly");
+          if (miWeekly) miWeekly.dispatchEvent(new Event("input"));
+        }
       }
     });
   }
