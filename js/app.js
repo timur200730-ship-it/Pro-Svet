@@ -1039,11 +1039,52 @@ function initMicroInvestWidget() {
   const trackerStatus = document.getElementById("trackerStatus");
   const targetWeekSum = document.getElementById("targetWeekSum");
   const signalsContent = document.getElementById("microSignalsContent");
+  const saveBtn = document.getElementById("miSaveBtn");
+  const saveStatus = document.getElementById("miSaveStatus");
 
   if (!startInput || !resInvested) return;
 
-  const checkKey = "prosvet_micro_week_checked";
+  const KEY = "prosvet_micro";
+  const CHECK_KEY = "prosvet_micro_week_checked";
 
+  /* ---------- Загрузка сохранённого ---------- */
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch {}
+
+  if (saved) {
+    if (saved.start != null && startInput) startInput.value = saved.start;
+    if (saved.weekly != null && weeklyInput) weeklyInput.value = saved.weekly;
+    if (saved.years != null && yearsInput) yearsInput.value = saved.years;
+  }
+
+  if (weekCheck) {
+    weekCheck.checked = localStorage.getItem(CHECK_KEY) === "true";
+  }
+
+  /* ---------- Сохранение ---------- */
+  function persistMicro({ silent = false } = {}) {
+    const data = {
+      start: Number(startInput?.value) || 0,
+      weekly: Number(weeklyInput?.value) || 0,
+      years: Number(yearsInput?.value) || 1,
+      savedAt: Date.now()
+    };
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
+
+    if (!silent && saveStatus) {
+      saveStatus.textContent = "✓ Сохранено";
+      saveStatus.style.color = "var(--success)";
+      clearTimeout(saveStatus._t);
+      saveStatus._t = setTimeout(() => { saveStatus.textContent = ""; }, 2000);
+    }
+  }
+
+  function persistCheck() {
+    if (!weekCheck) return;
+    localStorage.setItem(CHECK_KEY, weekCheck.checked ? "true" : "false");
+  }
+
+  /* ---------- Статус трекера ---------- */
   function updateTrackerStatus() {
     if (!trackerStatus || !weekCheck) return;
     if (weekCheck.checked) {
@@ -1055,19 +1096,17 @@ function initMicroInvestWidget() {
     }
   }
 
-  function handleCheckChange() {
-    if (!weekCheck) return;
-    localStorage.setItem(checkKey, weekCheck.checked ? "true" : "false");
-    updateTrackerStatus();
-  }
-
   if (weekCheck) {
-    weekCheck.checked = localStorage.getItem(checkKey) === "true";
-    weekCheck.addEventListener("change", handleCheckChange);
+    weekCheck.addEventListener("change", () => {
+      persistCheck();
+      updateTrackerStatus();
+    });
     updateTrackerStatus();
   }
 
-  function update() {
+  /* ---------- Основной рендер ---------- */
+  let saveTimer = null;
+  function update({ fromInput = true } = {}) {
     const start = Number(startInput.value) || 0;
     const weekly = Number(weeklyInput?.value) || 0;
     const years = Number(yearsInput?.value) || 1;
@@ -1087,12 +1126,10 @@ function initMicroInvestWidget() {
 
     if (signalsContent) {
       const quotes = window.latestQuotes || [];
-
       if (quotes.length > 0) {
         const topIdea =
           quotes.find(q => q.type === "stock" && (q.divYield || 0) > 5) ||
           quotes[0];
-
         signalsContent.innerHTML = `
           <b>Идея для портфеля:</b> Обратите внимание на ликвидные фонды или акции.
           ${topIdea ? `Например, <b>${topIdea.ticker}</b> (~${Number(topIdea.price).toFixed(0)} ₽).` : ""}
@@ -1105,17 +1142,36 @@ function initMicroInvestWidget() {
         `;
       }
     }
+
+    // Автосохранение с дебаунсом, только при вводе пользователем
+    if (fromInput) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => persistMicro({ silent: true }), 400);
+    }
   }
 
   [startInput, weeklyInput, yearsInput].forEach(el => {
-    if (el) el.addEventListener("input", update);
+    if (el) el.addEventListener("input", () => update({ fromInput: true }));
   });
 
-  update();
+  // Кнопка "Сохранить" — если она есть в разметке
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => {
+      persistMicro();
+      persistCheck();
+      update({ fromInput: false });
+    });
+  }
+
+  // Первый рендер без перезаписи (значения уже загружены)
+  update({ fromInput: false });
 }
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+} else {
+  initMicroInvestWidget();
+}
 } else {
   initMicroInvestWidget();
 }
