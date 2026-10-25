@@ -1,4 +1,4 @@
-/* Просвет — UI, события, связка движка, хранилища и экранов. */
+да/* Просвет — UI, события, связка движка, хранилища и экранов. */
 (function () {
   "use strict";
 
@@ -745,3 +745,102 @@ function initMicroInvestWidget() {
 
 // Запускаем инициализацию виджета после загрузки страницы
 document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+// --- Логика виджета микроинвестиций и трекера ---
+function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
+  const weeks = years * 52;
+  const weeklyRate = annualRate / 100 / 52;
+  
+  let totalInvested = startAmount;
+  let portfolioValue = startAmount;
+
+  for (let w = 1; w <= weeks; w++) {
+    portfolioValue = (portfolioValue + weeklyDeposit) * (1 + weeklyRate);
+    totalInvested += weeklyDeposit;
+  }
+
+  const annualPassive = portfolioValue * 0.10;
+  const monthlyPassive = annualPassive / 12;
+
+  return {
+    totalInvested: Math.round(totalInvested),
+    finalValue: Math.round(portfolioValue),
+    totalProfit: Math.round(portfolioValue - totalInvested),
+    monthlyPassive: Math.round(monthlyPassive)
+  };
+}
+
+function initMicroInvestWidget() {
+  const startInput = document.getElementById("miStart");
+  const weeklyInput = document.getElementById("miWeekly");
+  const yearsInput = document.getElementById("miYears");
+
+  const resInvested = document.getElementById("miResInvested");
+  const resValue = document.getElementById("miResValue");
+  const resPassive = document.getElementById("miResPassive");
+  const weekCheck = document.getElementById("miWeekCheck");
+  const trackerStatus = document.getElementById("trackerStatus");
+  const targetWeekSum = document.getElementById("targetWeekSum");
+  const signalsContent = document.getElementById("microSignalsContent");
+
+  if (!startInput) return;
+
+  const checkKey = "prosvet_micro_week_checked";
+  if (weekCheck) {
+    weekCheck.checked = localStorage.getItem(checkKey) === "true";
+    updateTrackerStatus();
+    
+    weekCheck.addEventListener("change", () => {
+      localStorage.setItem(checkKey, weekCheck.checked);
+      updateTrackerStatus();
+    });
+  }
+
+  function updateTrackerStatus() {
+    if (weekCheck.checked) {
+      trackerStatus.textContent = "✓ Выполнено на этой неделе!";
+      trackerStatus.style.color = "var(--success)";
+    } else {
+      trackerStatus.textContent = "⏳ Ожидает пополнения";
+      trackerStatus.style.color = "var(--accent)";
+    }
+  }
+
+  function update() {
+    const start = Number(startInput.value) || 0;
+    const weekly = Number(weeklyInput.value) || 0;
+    const years = Number(yearsInput.value) || 1;
+
+    if (targetWeekSum) targetWeekSum.textContent = weekly;
+
+    const res = simulateMicroInvestments({ startAmount: start, weeklyDeposit: weekly, years: years, annualRate: 14 });
+
+    if (resInvested) resInvested.textContent = res.totalInvested.toLocaleString() + " ₽";
+    if (resValue) resValue.textContent = res.finalValue.toLocaleString() + " ₽";
+    if (resPassive) resPassive.textContent = res.monthlyPassive.toLocaleString() + " ₽ / мес";
+
+    if (signalsContent) {
+      if (window.latestQuotes && window.latestQuotes.length > 0) {
+        const topIdea = window.latestQuotes.find(q => q.type === "stock" && q.divYield > 5) || window.latestQuotes[0];
+        signalsContent.innerHTML = `
+          <b>Торговая идея для микро-бюджета:</b> Обратите внимание на защитные активы или фонды. 
+          ${topIdea ? `Пример: <b>${topIdea.ticker}</b> (цена ~${topIdea.price.toFixed(0)} ₽).` : ''} 
+          Регулярно покупайте паи на сумму недельного взноса, усредняя цену входа.
+        `;
+      } else {
+        signalsContent.innerHTML = `
+          <b>Совет по стратегии:</b> На 100–300 рублей лучше всего приобретать паи биржевых фондов (БПИФов) на широкий рынок или золото, чтобы избежать риска одной компании. 
+          <i>(Нажмите «Обновить анализ» в блоке MOEX ниже, чтобы подгрузить свежие котировки).</i>
+        `;
+      }
+    }
+  }
+
+  [startInput, weeklyInput, yearsInput].forEach(el => {
+    if (el) el.addEventListener("input", update);
+  });
+
+  update();
+}
+
+document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+
