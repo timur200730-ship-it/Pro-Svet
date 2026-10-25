@@ -803,12 +803,7 @@ if (document.readyState === 'loading') {
 Сегодня
 
 
-
-
-
-
-
-// --- Логика виджета микроинвестиций и трекера ---
+// --- Надежная логика виджета микроинвестиций ---
 function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
   const weeks = years * 52;
   const weeklyRate = annualRate / 100 / 52;
@@ -844,6 +839,79 @@ function initMicroInvestWidget() {
   const trackerStatus = document.getElementById("trackerStatus");
   const targetWeekSum = document.getElementById("targetWeekSum");
   const signalsContent = document.getElementById("microSignalsContent");
+
+  // Если элементов на странице нет, выходим
+  if (!startInput || !resInvested) return;
+
+  const checkKey = "prosvet_micro_week_checked";
+  if (weekCheck) {
+    weekCheck.checked = localStorage.getItem(checkKey) === "true";
+    updateTrackerStatus();
+    
+    weekCheck.removeEventListener("change", handleCheckChange);
+    weekCheck.addEventListener("change", handleCheckChange);
+  }
+
+  function handleCheckChange() {
+    localStorage.setItem(checkKey, weekCheck.checked);
+    updateTrackerStatus();
+  }
+
+  function updateTrackerStatus() {
+    if (!trackerStatus) return;
+    if (weekCheck && weekCheck.checked) {
+      trackerStatus.textContent = "✓ Выполнено!";
+      trackerStatus.style.color = "var(--success)";
+    } else {
+      trackerStatus.textContent = "⏳ Ожидает";
+      trackerStatus.style.color = "var(--accent)";
+    }
+  }
+
+  function update() {
+    const start = Number(startInput.value) || 0;
+    const weekly = Number(weeklyInput.value) || 0;
+    const years = Number(yearsInput.value) || 1;
+
+    if (targetWeekSum) targetWeekSum.textContent = weekly;
+
+    const res = simulateMicroInvestments({ startAmount: start, weeklyDeposit: weekly, years: years, annualRate: 14 });
+
+    resInvested.textContent = res.totalInvested.toLocaleString('ru-RU') + " ₽";
+    resValue.textContent = res.finalValue.toLocaleString('ru-RU') + " ₽";
+    resPassive.textContent = res.monthlyPassive.toLocaleString('ru-RU') + " ₽ / мес";
+
+    if (signalsContent) {
+      if (window.latestQuotes && window.latestQuotes.length > 0) {
+        const topIdea = window.latestQuotes.find(q => q.type === "stock" && q.divYield > 5) || window.latestQuotes[0];
+        signalsContent.innerHTML = `
+          <b>Идея для портфеля:</b> Обратите внимание на ликвидные фонды или акции. 
+          ${topIdea ? `Например, <b>${topIdea.ticker}</b> (~${topIdea.price.toFixed(0)} ₽).` : ''} 
+          Усредняйте позицию регулярными покупками.
+        `;
+      } else {
+        signalsContent.innerHTML = `
+          <b>Совет:</b> На 100–300 рублей покупайте паи фондов на индекс или золото. 
+          <i>(Запустите сканирование в блоке MOEX ниже для точечных идей).</i>
+        `;
+      }
+    }
+  }
+
+  // Вешаем слушатели событий на инпуты (чтобы не дублировались, предварительно клонируем или просто вешаем)
+  [startInput, weeklyInput, yearsInput].forEach(el => {
+    el.oninput = update;
+  });
+
+-  // Первый расчет
+  update();
+}
+
+// Запускаем инициализацию сразу, если DOM уже готов, или по событию
+if (document.readyState === "complete" || document.readyState === "interactive") {setTimeout(initMicroInvestWidget, 50);
+} else {
+  document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+}
 
   if (!startInput) return;
 
