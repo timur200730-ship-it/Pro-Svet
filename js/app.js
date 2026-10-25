@@ -587,22 +587,32 @@
       analyticsList.hidden = false;
       analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Загрузка бумаг...</div></li>`;
 
-      try {
+            try {
         const quotes = await fetchQuotes();
         latestQuotes = quotes; // Сохраняем для портфеля
         
         const analyzed = [];
-        for (let i = 0; i < quotes.length; i++) {
-          const q = quotes[i];
-          analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Анализ ${i + 1} из ${quotes.length} (${q.ticker})...</div></li>`;
-          const closes = await fetchHistory(q.ticker, q.type === "bond");
-          const analysis = analyzeQuote(q, closes);
-          analyzed.push({ ...q, ...analysis });
+        const batchSize = 10; // Загружаем пачками по 10 бумаг одновременно
+        
+        for (let i = 0; i < quotes.length; i += batchSize) {
+          const batch = quotes.slice(i, i + batchSize);
+          const currentEnd = Math.min(i + batchSize, quotes.length);
+          
+          analyticsList.innerHTML = `<li class="loading-progress"><div class="loading-spinner"></div><div>Анализ бумаг (${i + 1}-${currentEnd} из ${quotes.length})...</div></li>`;
+          
+          const batchResults = await Promise.all(batch.map(async (q) => {
+            const closes = await fetchHistory(q.ticker, q.type === "bond");
+            const analysis = analyzeQuote(q, closes);
+            return { ...q, ...analysis };
+          }));
+          
+          analyzed.push(...batchResults);
         }
 
         const results = analyzed.sort((a, b) => b.score - a.score);
         analyticsList.innerHTML = "";
         $("#analyticsCount").textContent = String(results.length);
+
 
         results.forEach(item => {
           const li = document.createElement("li");
