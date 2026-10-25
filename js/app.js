@@ -11,7 +11,7 @@
   let lastResult = null;
   let currentDetailDebt = null;
   let currentBuyTicker = null;
-  let latestQuotes = []; // Кеш последних котировок для портфеля
+  let latestQuotes = [];
 
   /* ---------- Утилиты ---------- */
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -32,6 +32,63 @@
       toast.addEventListener("animationend", () => toast.remove());
     }, 3000);
   }
+
+  /* ---------- [FIX] Авто-вынос виджета «Мой первый капитал» в отдельный экран ---------- */
+  function ensureCapitalTab() {
+    const tabsContainer = document.querySelector(".tabs");
+    if (!tabsContainer) return;
+    if (tabsContainer.querySelector('[data-tab="capital"]')) return;
+    const tab = document.createElement("button");
+    tab.className = "tab";
+    tab.dataset.tab = "capital";
+    tab.textContent = "💰 Капитал";
+    tabsContainer.appendChild(tab);
+  }
+
+  function ensureCapitalScreen() {
+    const miStart = document.getElementById("miStart");
+    if (!miStart) return;
+
+    const existing = document.querySelector('.screen[data-screen="capital"]');
+    if (existing && existing.contains(miStart)) {
+      ensureCapitalTab();
+      return;
+    }
+
+    const signals = document.getElementById("microSignalsContent");
+
+    // Ищем ближайший общий контейнер виджета (содержащий и поля, и вывод)
+    let widgetRoot = miStart.parentElement;
+    while (
+      widgetRoot &&
+      widgetRoot !== document.body &&
+      signals &&
+      !widgetRoot.contains(signals)
+    ) {
+      widgetRoot = widgetRoot.parentElement;
+    }
+    if (!widgetRoot || widgetRoot === document.body) {
+      widgetRoot = miStart.parentElement;
+    }
+    if (!widgetRoot) return;
+
+    const capitalScreen = document.createElement("section");
+    capitalScreen.className = "screen";
+    capitalScreen.dataset.screen = "capital";
+
+    const h2 = document.createElement("h2");
+    h2.textContent = "Мой первый капитал";
+    h2.style.marginBottom = "16px";
+
+    widgetRoot.parentNode.insertBefore(capitalScreen, widgetRoot);
+    capitalScreen.appendChild(h2);
+    capitalScreen.appendChild(widgetRoot);
+
+    ensureCapitalTab();
+  }
+
+  // Вызываем ДО того, как собираем screens/tabs — чтобы они включали новый экран
+  ensureCapitalScreen();
 
   /* ---------- Тема и Навигация ---------- */
   const THEME_KEY = "prosvet.theme";
@@ -504,7 +561,6 @@
     $("#autoResult").hidden = false;
   });
 
-  // Досрочное погашение
   let earlyStrategy = "term";
   $$("#earlyStrategySeg .seg").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -627,17 +683,28 @@
       OPEN: c1.indexOf("OPEN"),
       HIGH: c1.indexOf("HIGH"),
       LOW: c1.indexOf("LOW"),
-      WAPRICE: c1.indexOf("WAPRICE")
+      WAPRICE: c1.indexOf("WAPRICE"),
+      PREVPRICE: c1.indexOf("PREVPRICE")
     };
 
     const sc1 = jsonStocks.securities.columns;
     const sd1 = jsonStocks.securities.data;
-    const sIdx1 = { SECID: sc1.indexOf("SECID"), DIVIDENDYIELD: sc1.indexOf("DIVIDENDYIELD") };
+    const sIdx1 = {
+      SECID: sc1.indexOf("SECID"),
+      DIVIDENDYIELD: sc1.indexOf("DIVIDENDYIELD"),
+      PREVPRICE: sc1.indexOf("PREVPRICE")
+    };
 
     for (const row of d1) {
       const ticker = row[idx1.SECID];
       if (!STOCKS.includes(ticker)) continue;
-      const last = row[idx1.LAST] || row[idx1.WAPRICE] || row[idx1.OPEN] || 0;
+
+      // [FIX] Fallback для выходных: PREVPRICE из securities, если LAST/WAPRICE/OPEN пустые
+      let last = row[idx1.LAST] || row[idx1.WAPRICE] || row[idx1.OPEN] || 0;
+      if (last === 0) {
+        const sRow = sd1.find(r => r[sIdx1.SECID] === ticker);
+        if (sRow && sIdx1.PREVPRICE !== -1) last = sRow[sIdx1.PREVPRICE] || 0;
+      }
       if (last === 0) continue;
 
       let divYield = 0;
@@ -672,13 +739,19 @@
       SECID: sc2.indexOf("SECID"),
       YIELDATPREVWAPRICE: sc2.indexOf("YIELDATPREVWAPRICE"),
       DURATION: sc2.indexOf("DURATION"),
-      ACCRUEDINT: sc2.indexOf("ACCRUEDINT")
+      ACCRUEDINT: sc2.indexOf("ACCRUEDINT"),
+      PREVPRICE: sc2.indexOf("PREVPRICE")
     };
 
     for (const row of d2) {
       const ticker = row[idx2.SECID];
       if (!BONDS.includes(ticker)) continue;
-      const last = row[idx2.LAST] || row[idx2.WAPRICE] || row[idx2.OPEN] || 0;
+
+      let last = row[idx2.LAST] || row[idx2.WAPRICE] || row[idx2.OPEN] || 0;
+      if (last === 0) {
+        const sRow = sd2.find(r => r[sIdx2.SECID] === ticker);
+        if (sRow && sIdx2.PREVPRICE !== -1) last = sRow[sIdx2.PREVPRICE] || 0;
+      }
       if (last === 0) continue;
 
       let ytm = 0, duration = 0, accrued = 0;
@@ -783,7 +856,8 @@
   // --- Портфель ---
   function renderPortfolio() {
     const box = $("#portfolioBox");
-    if (state.portfolio.length === 0) { box.hidden = true; return; }
+    if (!box) return;
+    if (!state.portfolio || state.portfolio.length === 0) { box.hidden = true; return; }
     box.hidden = false;
 
     let totalValue = 0;
@@ -856,7 +930,8 @@
       try {
         const quotes = await fetchQuotes();
         latestQuotes = quotes;
-        window.latestQuotes = quotes; // <-- пробрасываем в виджет микроинвестиций
+        // [FIX] Пробрасываем в window, чтобы виджет микроинвестиций увидел идеи
+        window.latestQuotes = quotes;
 
         const analyzed = [];
         const batchSize = 10;
@@ -918,7 +993,7 @@
 
         renderPortfolio();
 
-        } catch (err) {
+      } catch (err) {
         console.error(err);
         analyticsList.innerHTML = '<li style="text-align:center; padding:20px; color:var(--danger)">Ошибка загрузки данных.</li>';
         showToast("Ошибка MOEX", "error");
@@ -926,8 +1001,8 @@
         runAnalyticsBtn.disabled = false;
         runAnalyticsBtn.innerHTML = '<span>⚡</span> Обновить анализ';
 
-        // Авто-обновление виджета микроинвестиций, чтобы идеи подтянулись сразу
-        if (typeof initMicroInvestWidget === "function") {
+        // [FIX] Авто-обновление виджета микроинвестиций, чтобы идеи подтянулись сразу
+        if (typeof window.initMicroInvestWidget === "function") {
           const miWeekly = document.getElementById("miWeekly");
           if (miWeekly) miWeekly.dispatchEvent(new Event("input"));
         }
@@ -973,7 +1048,22 @@
   $("#resetBtn").addEventListener("click", () => {
     if (!confirm("Сбросить всё?")) return;
     state = Storage.reset();
+    // [FIX] Чистим и микроинвест, чтобы вернуться к дефолтам
+    try {
+      localStorage.removeItem("prosvet_micro");
+      localStorage.removeItem("prosvet_micro_week_checked");
+    } catch {}
     syncInputs(); render();
+    // [FIX] Обновляем виджет капитала на дефолты
+    const miStart = document.getElementById("miStart");
+    const miWeekly = document.getElementById("miWeekly");
+    const miYears = document.getElementById("miYears");
+    const miWeek = document.getElementById("miWeekCheck");
+    if (miStart) miStart.value = 100;
+    if (miWeekly) miWeekly.value = 100;
+    if (miYears) miYears.value = 5;
+    if (miWeek) miWeek.checked = false;
+    if (miWeekly) miWeekly.dispatchEvent(new Event("input"));
     showToast("Сброшено");
   });
 
@@ -1004,7 +1094,7 @@
   render();
 })();
 
-/* ---------- Микроинвестиции ---------- */
+/* ---------- [FIX] Микроинвестиции: расчёт, сохранение, идеи ---------- */
 function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 } = {}) {
   const weeks = Math.max(0, Math.round(years * 52));
   const weeklyRate = annualRate / 100 / 52;
@@ -1154,7 +1244,6 @@ function initMicroInvestWidget() {
     if (el) el.addEventListener("input", () => update({ fromInput: true }));
   });
 
-  // Кнопка "Сохранить" — если она есть в разметке
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
       persistMicro();
@@ -1167,11 +1256,11 @@ function initMicroInvestWidget() {
   update({ fromInput: false });
 }
 
+// [FIX] Экспортируем в window, чтобы IIFE мог вызвать авто-обновление
+window.initMicroInvestWidget = initMicroInvestWidget;
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
-} else {
-  initMicroInvestWidget();
-}
 } else {
   initMicroInvestWidget();
 }
