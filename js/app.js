@@ -706,10 +706,14 @@ function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, year
     totalInvested += weeklyDeposit;
   }
 
+  const annualPassive = portfolioValue * 0.10;
+  const monthlyPassive = annualPassive / 12;
+
   return {
     totalInvested: Math.round(totalInvested),
     finalValue: Math.round(portfolioValue),
-    totalProfit: Math.round(portfolioValue - totalInvested)
+    totalProfit: Math.round(portfolioValue - totalInvested),
+    monthlyPassive: Math.round(monthlyPassive)
   };
 }
 
@@ -720,31 +724,90 @@ function initMicroInvestWidget() {
 
   const resInvested = document.getElementById("miResInvested");
   const resValue = document.getElementById("miResValue");
-  const resProfit = document.getElementById("miResProfit");
+  const resPassive = document.getElementById("miResPassive");
+  const weekCheck = document.getElementById("miWeekCheck");
+  const trackerStatus = document.getElementById("trackerStatus");
+  const targetWeekSum = document.getElementById("targetWeekSum");
+  const signalsContent = document.getElementById("microSignalsContent");
 
-  if (!startInput || !weeklyInput || !yearsInput) return; // Если элемент еще не отрисован
+  if (!startInput) return;
+
+  const checkKey = "prosvet_micro_week_checked";
+  if (weekCheck) {
+    weekCheck.checked = localStorage.getItem(checkKey) === "true";
+    updateTrackerStatus();
+    
+    weekCheck.addEventListener("change", () => {
+      localStorage.setItem(checkKey, weekCheck.checked);
+      updateTrackerStatus();
+    });
+  }
+
+  function updateTrackerStatus() {
+    if (weekCheck.checked) {
+      trackerStatus.textContent = "✓ Выполнено!";
+      trackerStatus.style.color = "var(--success)";
+    } else {
+      trackerStatus.textContent = "⏳ Ожидает";
+      trackerStatus.style.color = "var(--accent)";
+    }
+  }
 
   function update() {
     const start = Number(startInput.value) || 0;
     const weekly = Number(weeklyInput.value) || 0;
     const years = Number(yearsInput.value) || 1;
 
+    if (targetWeekSum) targetWeekSum.textContent = weekly;
+
     const res = simulateMicroInvestments({ startAmount: start, weeklyDeposit: weekly, years: years, annualRate: 14 });
 
-    resInvested.textContent = res.totalInvested.toLocaleString() + " ₽";
-    resValue.textContent = res.finalValue.toLocaleString() + " ₽";
-    resProfit.textContent = "+" + res.totalProfit.toLocaleString() + " ₽";
+    if (resInvested) resInvested.textContent = res.totalInvested.toLocaleString() + " ₽";
+    if (resValue) resValue.textContent = res.finalValue.toLocaleString() + " ₽";
+    if (resPassive) resPassive.textContent = res.monthlyPassive.toLocaleString() + " ₽ / мес";
+
+    if (signalsContent) {
+      if (window.latestQuotes && window.latestQuotes.length > 0) {
+        const topIdea = window.latestQuotes.find(q => q.type === "stock" && q.divYield > 5) || window.latestQuotes[0];
+        signalsContent.innerHTML = `
+          <b>Идея для портфеля:</b> Обратите внимание на ликвидные фонды или акции. 
+          ${topIdea ? `Например, <b>${topIdea.ticker}</b> (~${topIdea.price.toFixed(0)} ₽).` : ''} 
+          Усредняйте позицию регулярными покупками.
+        `;
+      } else {
+        signalsContent.innerHTML = `
+          <b>Совет:</b> На 100–300 рублей покупайте паи фондов на индекс или золото. 
+          <i>(Запустите сканирование в блоке MOEX ниже для точечных идей).</i>
+        `;
+      }
+    }
   }
 
   [startInput, weeklyInput, yearsInput].forEach(el => {
     el.addEventListener("input", update);
   });
 
+  // Принудительный расчет сразу при загрузке
   update();
 }
 
-// Запускаем инициализацию виджета после загрузки страницы
-document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+// Запускаем инициализацию виджета
+if (document.readyState === 'loading') {
+  document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
+} else {
+  initMicroInvestWidget();
+}
+15:45
+
+
+Сегодня
+
+
+
+
+
+
+
 // --- Логика виджета микроинвестиций и трекера ---
 function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
   const weeks = years * 52;
