@@ -34,17 +34,7 @@
   }
 
   /* ---------- [FIX] Авто-вынос виджета «Мой первый капитал» в отдельный экран ---------- */
-  function ensureCapitalTab() {
-    const tabsContainer = document.querySelector(".tabs");
-    if (!tabsContainer) return;
-    if (tabsContainer.querySelector('[data-tab="capital"]')) return;
-    const tab = document.createElement("button");
-    tab.className = "tab";
-    tab.dataset.tab = "capital";
-    tab.textContent = "💰 Капитал";
-    tabsContainer.appendChild(tab);
-  }
-
+  
   function ensureCapitalScreen() {
     const miStart = document.getElementById("miStart");
     if (!miStart) return;
