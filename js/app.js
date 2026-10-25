@@ -693,3 +693,55 @@
 
   syncInputs(); show("debts"); render();
 })();
+// --- Логика виджета микроинвестиций ---
+function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
+  const weeks = years * 52;
+  const weeklyRate = annualRate / 100 / 52;
+  
+  let totalInvested = startAmount;
+  let portfolioValue = startAmount;
+
+  for (let w = 1; w <= weeks; w++) {
+    portfolioValue = (portfolioValue + weeklyDeposit) * (1 + weeklyRate);
+    totalInvested += weeklyDeposit;
+  }
+
+  return {
+    totalInvested: Math.round(totalInvested),
+    finalValue: Math.round(portfolioValue),
+    totalProfit: Math.round(portfolioValue - totalInvested)
+  };
+}
+
+function initMicroInvestWidget() {
+  const startInput = document.getElementById("miStart");
+  const weeklyInput = document.getElementById("miWeekly");
+  const yearsInput = document.getElementById("miYears");
+
+  const resInvested = document.getElementById("miResInvested");
+  const resValue = document.getElementById("miResValue");
+  const resProfit = document.getElementById("miResProfit");
+
+  if (!startInput || !weeklyInput || !yearsInput) return; // Если элемент еще не отрисован
+
+  function update() {
+    const start = Number(startInput.value) || 0;
+    const weekly = Number(weeklyInput.value) || 0;
+    const years = Number(yearsInput.value) || 1;
+
+    const res = simulateMicroInvestments({ startAmount: start, weeklyDeposit: weekly, years: years, annualRate: 14 });
+
+    resInvested.textContent = res.totalInvested.toLocaleString() + " ₽";
+    resValue.textContent = res.finalValue.toLocaleString() + " ₽";
+    resProfit.textContent = "+" + res.totalProfit.toLocaleString() + " ₽";
+  }
+
+  [startInput, weeklyInput, yearsInput].forEach(el => {
+    el.addEventListener("input", update);
+  });
+
+  update();
+}
+
+// Запускаем инициализацию виджета после загрузки страницы
+document.addEventListener("DOMContentLoaded", initMicroInvestWidget);
