@@ -366,17 +366,15 @@
       const newBalance = balance - extra;
       const months = base.months;
       const newMonthly = newBalance * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
-      
       const newSim = simulateLoan(newBalance, rate, newMonthly, 0);
       const savedInterest = base.totalInterest - newSim.totalInterest;
-      
       $("#earlyNewTerm").textContent = `${money(newMonthly)} / мес.`;
       $("#earlySave").textContent = money(Math.max(0, savedInterest));
     }
     $("#earlyResult").hidden = false;
   });
 
-  /* ---------- Аналитика MOEX (Стабильная версия без запросов истории) ---------- */
+  /* ---------- Аналитика MOEX ---------- */
   const STOCKS = [
     "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "NVTK", "TATN", "SNGS", "SNGSP", "PLZL", 
     "YDEX", "TCSG", "VTBR", "ALRS", "MTLR", "CHMF", "NLMK", "MAGN", "MOEX", "RUAL", 
@@ -410,16 +408,7 @@
           const sRow = sd1.find(r => r[sIdx1.SECID] === ticker);
           if (sRow) divYield = sRow[sIdx1.DIVIDENDYIELD] || 0;
       }
-      quotes.push({ 
-        ticker, 
-        type: "stock", 
-        price: last, 
-        changePercent: row[idx1.LASTCHANGEPRCNT] || 0, 
-        high: row[idx1.HIGH] || last, 
-        low: row[idx1.LOW] || last, 
-        volume: row[idx1.VALTODAY] || 0,
-        divYield 
-      });
+      quotes.push({ ticker, type: "stock", price: last, changePercent: row[idx1.LASTCHANGEPRCNT] || 0, high: row[idx1.HIGH] || last, low: row[idx1.LOW] || last, volume: row[idx1.VALTODAY] || 0, divYield });
     }
 
     const c2 = jsonBonds.marketdata.columns; const d2 = jsonBonds.marketdata.data;
@@ -439,35 +428,18 @@
           duration = sRow[sIdx2.DURATION] || 0;
           accrued = sRow[sIdx2.ACCRUEDINT] || 0;
       }
-
-      quotes.push({ 
-        ticker, 
-        type: "bond", 
-        price: last * 10, 
-        changePercent: row[idx2.LASTCHANGEPRCNT] || 0, 
-        high: (row[idx2.HIGH] || last) * 10, 
-        low: (row[idx2.LOW] || last) * 10, 
-        volume: row[idx2.VALTODAY] || 0,
-        ytm, duration, accrued 
-      });
+      quotes.push({ ticker, type: "bond", price: last * 10, changePercent: row[idx2.LASTCHANGEPRCNT] || 0, high: (row[idx2.HIGH] || last) * 10, low: (row[idx2.LOW] || last) * 10, volume: row[idx2.VALTODAY] || 0, ytm, duration, accrued });
     }
-
     return quotes;
   }
 
   function analyzeQuote(quote) {
-    let score = 50; 
-    let reasons = []; 
-    let tags = []; 
-    let shortSignal = "Нейтрально"; 
-    let longSignal = "Нейтрально"; 
-    let stopLoss = 0;
+    let score = 50; let reasons = []; let tags = []; let shortSignal = "Нейтрально"; let longSignal = "Нейтрально"; let stopLoss = 0;
 
     if (quote.type === "bond") {
       tags.push({ text: "ОФЗ", type: "neutral" });
       tags.push({ text: `YTM: ${quote.ytm.toFixed(1)}%`, type: "good" });
       tags.push({ text: `Дюр: ${quote.duration.toFixed(1)} г.`, type: "neutral" });
-      
       if (quote.ytm > 12) score += 15;
       longSignal = quote.ytm > 12 ? "Покупать (высокая YTM)" : "Держать";
       shortSignal = "Долгосрок";
@@ -477,50 +449,22 @@
 
     if (quote.divYield > 0) tags.push({ text: `Див: ${quote.divYield.toFixed(1)}%`, type: "good" });
     
-    // Анализ на основе дневного изменения и положения в диапазоне
-    if (quote.changePercent > 1.0) {
-      score += 15;
-      reasons.push("Сильный дневной рост");
-      shortSignal = "Покупать";
-    } else if (quote.changePercent > 0) {
-      score += 8;
-      reasons.push("Умеренный плюс за день");
-      shortSignal = "Держать";
-    } else if (quote.changePercent < -1.0) {
-      score -= 15;
-      reasons.push("Заметная просадка");
-      shortSignal = "Избегать";
-    } else {
-      score -= 5;
-      reasons.push("Флэт / слабая динамика");
-    }
+    if (quote.changePercent > 1.0) { score += 15; reasons.push("Сильный дневной рост"); shortSignal = "Покупать"; }
+    else if (quote.changePercent > 0) { score += 8; reasons.push("Умеренный плюс за день"); shortSignal = "Держать"; }
+    else if (quote.changePercent < -1.0) { score -= 15; reasons.push("Заметная просадка"); shortSignal = "Избегать"; }
+    else { score -= 5; reasons.push("Флэт / слабая динамика"); }
 
     if (quote.high > quote.low) {
       const pos = (quote.price - quote.low) / (quote.high - quote.low);
-      if (pos >= 0.7) {
-        score += 10;
-        reasons.push("Закрытие у максимумов дня");
-        tags.push({ text: "Сила дня", type: "good" });
-      } else if (pos <= 0.3) {
-        score -= 10;
-        reasons.push("Давление продавцов");
-        tags.push({ text: "Слабость", type: "bad" });
-      }
+      if (pos >= 0.7) { score += 10; reasons.push("Закрытие у максимумов дня"); tags.push({ text: "Сила дня", type: "good" }); }
+      else if (pos <= 0.3) { score -= 10; reasons.push("Давление продавцов"); tags.push({ text: "Слабость", type: "bad" }); }
     }
-
-    if (quote.volume > 100_000_000) {
-      score += 5;
-      tags.push({ text: "Ликвидно", type: "neutral" });
-    }
+    if (quote.volume > 100_000_000) { score += 5; tags.push({ text: "Ликвидно", type: "neutral" }); }
 
     score = Math.max(0, Math.min(100, score));
     let recommendation = "Держать";
-    if (score >= 65) recommendation = "Покупать"; 
-    else if (score <= 35) recommendation = "Избегать";
-
-    if (shortSignal === "Покупать") {
-      stopLoss = quote.price * 0.95;
-    }
+    if (score >= 65) recommendation = "Покупать"; else if (score <= 35) recommendation = "Избегать";
+    if (shortSignal === "Покупать") stopLoss = quote.price * 0.95;
 
     return { score: Math.round(score), recommendation, shortSignal, longSignal: score >= 60 ? "Покупать" : "Держать", stopLoss, reasons, tags };
   }
@@ -528,12 +472,11 @@
   /* ---------- Портфель ---------- */
   function renderPortfolio() {
     const box = $("#portfolioBox");
+    if (!box) return;
     if (state.portfolio.length === 0) { box.hidden = true; return; }
     box.hidden = false;
 
-    let totalValue = 0;
-    let totalInvested = 0;
-
+    let totalValue = 0, totalInvested = 0;
     state.portfolio.forEach(p => {
       const q = latestQuotes.find(x => x.ticker === p.ticker);
       const currentPrice = q ? q.price : p.buyPrice;
@@ -575,15 +518,8 @@
     const q = latestQuotes.find(x => x.ticker === currentBuyTicker);
     const type = q && q.type === "bond" ? "bond" : "stock";
 
-    state.portfolio.push({
-      id: Storage.makeId(),
-      ticker: currentBuyTicker,
-      qty, buyPrice: price, type, date: Date.now()
-    });
-    persist();
-    closeBuyModal();
-    renderPortfolio();
-    showToast(`Куплено ${qty} шт. ${currentBuyTicker}`);
+    state.portfolio.push({ id: Storage.makeId(), ticker: currentBuyTicker, qty, buyPrice: price, type, date: Date.now() });
+    persist(); closeBuyModal(); renderPortfolio(); showToast(`Куплено ${qty} шт. ${currentBuyTicker}`);
   });
 
   /* ---------- Мгновенный запуск аналитики MOEX ---------- */
@@ -638,15 +574,12 @@
             <div class="analytics-tags">${tagsHtml}</div>
             <div class="analytics-reasons">${item.reasons.join(" · ")}</div>
           `;
-          
           li.querySelector(".analytics-buy-btn").addEventListener("click", () => openBuyModal(item.ticker, item.price));
           analyticsList.appendChild(li);
         });
 
         renderPortfolio();
-        if (typeof window.updateMicroWidgetSignals === "function") {
-          window.updateMicroWidgetSignals();
-        }
+        if (typeof window.updateMicroWidgetSignals === "function") window.updateMicroWidgetSignals();
 
       } catch (err) {
         console.error(err);
@@ -659,35 +592,57 @@
     });
   }
 
-  /* ---------- Виджет: Мой первый капитал со 100 ₽ ---------- */
-  function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
-    const weeks = years * 52;
-    const weeklyRate = annualRate / 100 / 52;
-    
-    let totalInvested = startAmount;
-    let portfolioValue = startAmount;
+  /* ---------- ВИДЖЕТ: Мой первый капитал ---------- */
+  
+  // 1. Автоматически создаем вкладку и переносим туда виджет
+  function setupCapitalScreen() {
+    const miStart = document.getElementById("miStart");
+    if (!miStart) return;
 
-    for (let w = 1; w <= weeks; w++) {
-      portfolioValue = (portfolioValue + weeklyDeposit) * (1 + weeklyRate);
-      totalInvested += weeklyDeposit;
+    // Создаем экран, если его нет
+    let capitalScreen = document.querySelector('.screen[data-screen="capital"]');
+    if (!capitalScreen) {
+      capitalScreen = document.createElement("section");
+      capitalScreen.className = "screen";
+      capitalScreen.dataset.screen = "capital";
+      capitalScreen.innerHTML = '<h2 style="margin-bottom: 16px;">Мой первый капитал</h2>';
+      
+      const widgetRoot = miStart.closest('.card') || miStart.parentElement.parentElement;
+      if (widgetRoot && widgetRoot.parentNode) {
+        widgetRoot.parentNode.insertBefore(capitalScreen, widgetRoot);
+        capitalScreen.appendChild(widgetRoot);
+      }
     }
 
-    const annualPassive = portfolioValue * 0.10;
-    const monthlyPassive = annualPassive / 12;
-
-    return {
-      totalInvested: Math.round(totalInvested),
-      finalValue: Math.round(portfolioValue),
-      totalProfit: Math.round(portfolioValue - totalInvested),
-      monthlyPassive: Math.round(monthlyPassive)
-    };
+    // Создаем кнопку в нижнем меню, если её нет
+    let capitalTab = document.querySelector('.tab[data-tab="capital"]');
+    if (!capitalTab) {
+      const tabbar = document.querySelector('.tabbar');
+      if (tabbar) {
+        capitalTab = document.createElement("button");
+        capitalTab.className = "tab";
+        capitalTab.dataset.tab = "capital";
+        capitalTab.innerHTML = '<span class="tab-text">Капитал</span><div class="tab-dot"></div>';
+        tabbar.appendChild(capitalTab);
+        
+        // Добавляем обработчик клика
+        capitalTab.addEventListener("click", () => show("capital"));
+      }
+    }
   }
 
+  // Запускаем перенос виджета как только DOM загрузится
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupCapitalScreen);
+  } else {
+    setupCapitalScreen();
+  }
+
+  // 2. Инициализация виджета и внедрение фиксов для мобилок
   function initMicroInvestWidget() {
     const startInput = document.getElementById("miStart");
     const weeklyInput = document.getElementById("miWeekly");
     const yearsInput = document.getElementById("miYears");
-
     const resInvested = document.getElementById("miResInvested");
     const resValue = document.getElementById("miResValue");
     const resPassive = document.getElementById("miResPassive");
@@ -698,12 +653,58 @@
 
     if (!startInput || !resInvested) return;
 
-    const checkKey = "prosvet_micro_week_checked";
+    // ФИКС МОБИЛЬНОЙ ВЕРСТКИ (предотвращает вылезание за края)
+    const styleFix = document.createElement('style');
+    styleFix.innerHTML = `
+      html, body { overflow-x: hidden !important; width: 100%; max-width: 100vw; }
+      .tabbar { 
+        display: flex !important; 
+        overflow-x: auto !important; 
+        -webkit-overflow-scrolling: touch; 
+        scrollbar-width: none; 
+      }
+      .tabbar::-webkit-scrollbar { display: none; }
+      .tab { flex: 1 0 auto !important; min-width: 70px; padding: 8px 10px !important; }
+      .micro-inputs { display: flex !important; flex-wrap: wrap !important; gap: 8px; }
+      .input-group { flex: 1 1 80px; min-width: 0; }
+      .micro-results { display: flex !important; flex-wrap: wrap !important; justify-content: space-between; gap: 10px; }
+      .res-item { flex: 1; min-width: 80px; text-align: center; }
+      #microSignalsContent { word-break: break-word; overflow-wrap: break-word; }
+    `;
+    document.head.appendChild(styleFix);
+
+    // ДОБАВЛЯЕМ КНОПКУ СОХРАНИТЬ
+    let saveBtn = document.getElementById("miSaveBtn");
+    if (!saveBtn) {
+      saveBtn = document.createElement("button");
+      saveBtn.id = "miSaveBtn";
+      saveBtn.className = "btn btn-primary";
+      saveBtn.style.marginTop = "10px";
+      saveBtn.style.width = "100%";
+      saveBtn.textContent = "💾 Сохранить данные";
+      
+      const inputsContainer = document.querySelector('.micro-inputs');
+      if (inputsContainer) inputsContainer.parentNode.insertBefore(saveBtn, inputsContainer.nextSibling);
+      else startInput.parentNode.appendChild(saveBtn);
+    }
+
+    const DATA_KEY = "prosvet_micro";
+    const CHECK_KEY = "prosvet_micro_week_checked";
+
+    // Загружаем сохраненные данные
+    try {
+      const saved = JSON.parse(localStorage.getItem(DATA_KEY) || "null");
+      if (saved) {
+        if (saved.start != null) startInput.value = saved.start;
+        if (saved.weekly != null && weeklyInput) weeklyInput.value = saved.weekly;
+        if (saved.years != null && yearsInput) yearsInput.value = saved.years;
+      }
+    } catch(e) {}
+
     if (weekCheck) {
-      weekCheck.checked = localStorage.getItem(checkKey) === "true";
-      updateTrackerStatus();
+      weekCheck.checked = localStorage.getItem(CHECK_KEY) === "true";
       weekCheck.onchange = () => {
-        localStorage.setItem(checkKey, weekCheck.checked);
+        localStorage.setItem(CHECK_KEY, weekCheck.checked ? "true" : "false");
         updateTrackerStatus();
       };
     }
@@ -718,19 +719,50 @@
         trackerStatus.style.color = "var(--accent)";
       }
     }
+    updateTrackerStatus();
 
-    function update() {
+    function persistMicro() {
+      try {
+        localStorage.setItem(DATA_KEY, JSON.stringify({
+          start: Number(startInput.value) || 0,
+          weekly: Number(weeklyInput?.value) || 0,
+          years: Number(yearsInput?.value) || 1
+        }));
+        showToast("Данные капитала сохранены ✓");
+      } catch (e) {}
+    }
+
+    saveBtn.onclick = persistMicro;
+
+    function simulateMicroInvestments({ startAmount = 100, weeklyDeposit = 100, years = 5, annualRate = 14 }) {
+      const weeks = years * 52;
+      const weeklyRate = annualRate / 100 / 52;
+      let totalInvested = startAmount;
+      let portfolioValue = startAmount;
+      for (let w = 1; w <= weeks; w++) {
+        portfolioValue = (portfolioValue + weeklyDeposit) * (1 + weeklyRate);
+        totalInvested += weeklyDeposit;
+      }
+      const monthlyPassive = (portfolioValue * 0.10) / 12;
+      return {
+        totalInvested: Math.round(totalInvested),
+        finalValue: Math.round(portfolioValue),
+        monthlyPassive: Math.round(monthlyPassive)
+      };
+    }
+
+    function updateWidget() {
       const start = Number(startInput.value) || 0;
-      const weekly = Number(weeklyInput.value) || 0;
-      const years = Number(yearsInput.value) || 1;
+      const weekly = Number(weeklyInput?.value) || 0;
+      const years = Number(yearsInput?.value) || 1;
 
       if (targetWeekSum) targetWeekSum.textContent = weekly;
 
       const res = simulateMicroInvestments({ startAmount: start, weeklyDeposit: weekly, years: years, annualRate: 14 });
 
       resInvested.textContent = res.totalInvested.toLocaleString('ru-RU') + " ₽";
-      resValue.textContent = res.finalValue.toLocaleString('ru-RU') + " ₽";
-      resPassive.textContent = res.monthlyPassive.toLocaleString('ru-RU') + " ₽ / мес";
+      if (resValue) resValue.textContent = res.finalValue.toLocaleString('ru-RU') + " ₽";
+      if (resPassive) resPassive.textContent = res.monthlyPassive.toLocaleString('ru-RU') + " ₽ / мес";
 
       if (signalsContent) {
         if (window.latestQuotes && window.latestQuotes.length > 0) {
@@ -750,11 +782,26 @@
     }
 
     [startInput, weeklyInput, yearsInput].forEach(el => {
-      if (el) el.oninput = update;
+      if (el) {
+        el.oninput = () => {
+          updateWidget();
+          // Автосохранение на всякий случай (через 500мс)
+          clearTimeout(window._microSaveTimer);
+          window._microSaveTimer = setTimeout(() => {
+            try {
+              localStorage.setItem(DATA_KEY, JSON.stringify({
+                start: Number(startInput.value) || 0,
+                weekly: Number(weeklyInput?.value) || 0,
+                years: Number(yearsInput?.value) || 1
+              }));
+            } catch(e) {}
+          }, 500);
+        };
+      }
     });
 
-    window.updateMicroWidgetSignals = update;
-    update();
+    window.updateMicroWidgetSignals = updateWidget;
+    updateWidget();
   }
 
   if (document.readyState === "complete" || document.readyState === "interactive") {
@@ -779,7 +826,10 @@
   });
   $("#resetBtn").addEventListener("click", () => {
     if (!confirm("Сбросить всё?")) return;
-    state = Storage.reset(); syncInputs(); render(); showToast("Сброшено");
+    state = Storage.reset(); 
+    localStorage.removeItem("prosvet_micro");
+    localStorage.removeItem("prosvet_micro_week_checked");
+    syncInputs(); render(); showToast("Сброшено");
   });
 
   function syncInputs() {
