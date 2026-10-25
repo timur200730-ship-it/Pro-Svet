@@ -215,6 +215,66 @@
       </section>
 
       <!-- АНАЛИТИКА MOEX -->
+      <!-- Продвинутый виджет: Капитал со 100 рублей + Трекер и Сигналы -->
+<section class="card-section micro-invest-card">
+  <div class="section-header">
+    <h2>🎯 Мой первый капитал (от 100 ₽)</h2>
+    <p class="subtitle" style="font-size: 12px; color: var(--muted);">План, трекер прогресса и торговые идеи</p>
+  </div>
+
+  <!-- Ввод данных -->
+  <div class="micro-inputs">
+    <div class="input-group">
+      <label>Старт (₽)</label>
+      <input type="number" id="miStart" value="100" step="50">
+    </div>
+    <div class="input-group">
+      <label>В неделю (₽)</label>
+      <input type="number" id="miWeekly" value="100" step="50">
+    </div>
+    <div class="input-group">
+      <label>Срок (лет)</label>
+      <input type="number" id="miYears" value="5" min="1" max="20">
+    </div>
+  </div>
+
+  <!-- Результаты расчёта -->
+  <div class="micro-results" id="miResultBox">
+    <div class="res-item">
+      <span>Внесено вами</span>
+      <b id="miResInvested" class="num">0 ₽</b>
+    </div>
+    <div class="res-item">
+      <span>Итоговый капитал</span>
+      <b id="miResValue" class="num" style="color:var(--success)">0 ₽</b>
+    </div>
+    <div class="res-item">
+      <span>Пассивный доход / мес</span>
+      <b id="miResPassive" class="num" style="color:var(--accent)">0 ₽</b>
+    </div>
+  </div>
+
+  <!-- Блок 1: Трекер прогресса (Чек-лист недели) -->
+  <div class="tracker-section" style="background: var(--bg, #0d0d11); padding: 12px; border-radius: 10px; margin-bottom: 14px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span style="font-size: 12px; font-weight: bold; color: var(--text);">📅 Чек-лист текущей недели</span>
+      <span id="trackerStatus" style="font-size: 11px; color: var(--accent);">Не пополнено</span>
+    </div>
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--muted);">
+      <input type="checkbox" id="miWeekCheck" style="accent-color: var(--accent);"> 
+      Я пополнил(а) брокерский счёт на <span id="targetWeekSum">100</span> ₽ и купил(а) пай актива
+    </label>
+  </div>
+
+  <!-- Блок 2: Практические сигналы и идеи для микроинвестора -->
+  <div class="micro-signals-box">
+    <h3 style="font-size: 12px; color: var(--accent); margin-bottom: 6px;">💡 Рекомендации и «сигналы» на сегодня</h3>
+    <div id="microSignalsContent" style="font-size: 11px; color: var(--muted); line-height: 1.4;">
+      Загрузка идей для портфеля...
+    </div>
+  </div>
+</section>
+
       <!-- Блок: План пассивного дохода со 100 рублей -->
 <section class="card-section micro-invest-card">
   <div class="section-header">
