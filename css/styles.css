@@ -202,3 +202,72 @@ button { font: inherit; color: inherit; }
 .loading-progress { text-align: center; padding: 30px 20px; color: var(--text-dim); }
 .loading-spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* --- Стили для виджета микроинвестиций --- */
+.micro-invest-card {
+  background: var(--card-bg, #16161c);
+  border: 1px solid var(--line, #26262f);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: var(--text, #f0f0f5);
+}
+
+.micro-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.input-group label {
+  font-size: 11px;
+  color: var(--muted, #8a8a99);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.input-group input {
+  width: 100%;
+  background: var(--bg, #0d0d11);
+  border: 1px solid var(--line, #26262f);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.micro-results {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--bg, #0d0d11);
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.res-item span {
+  font-size: 10px;
+  color: var(--muted);
+  display: block;
+}
+
+.res-item b {
+  font-size: 14px;
+  margin-top: 2px;
+  display: block;
+}
+
+.steps-list {
+  font-size: 11px;
+  color: var(--muted);
+  padding-left: 14px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.steps-list li {
+  margin-bottom: 4px;
+}
