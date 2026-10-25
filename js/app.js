@@ -34,8 +34,106 @@
   }
 
   /* ---------- [FIX] Авто-вынос виджета «Мой первый капитал» в отдельный экран ---------- */
-  
+   /* ---------- [FIX] Авто-вынос виджета «Мой первый капитал» в отдельный экран ---------- */
+  function ensureCapitalTab() {
+    // уже есть — выходим
+    let existing = document.querySelector('[data-tab="capital"]');
+    if (existing) return existing;
+
+    // ищем контейнер табов по нескольким возможным селекторам
+    let container = null;
+    const selectors = [
+      ".tabs", ".tab-bar", ".nav-tabs", ".tabs-container",
+      ".tab-nav", "[role='tablist']", "nav.tabs"
+    ];
+    for (const sel of selectors) {
+      container = document.querySelector(sel);
+      if (container) break;
+    }
+
+    // fallback: родитель любого существующего таба
+    if (!container) {
+      const sample = document.querySelector(".tab, [data-tab]");
+      if (sample && sample.parentElement) container = sample.parentElement;
+    }
+
+    if (!container) {
+      console.warn("[Prosvet] Не найден контейнер табов. Табы в DOM:",
+        Array.from(document.querySelectorAll("[data-tab]")).map(t => ({
+          tag: t.tagName,
+          tab: t.dataset.tab,
+          parentClass: t.parentElement?.className
+        }))
+      );
+      return null;
+    }
+
+    // клонируем существующий таб, чтобы сохранить стили и структуру
+    const sample = container.querySelector(".tab, [data-tab]");
+    let tab;
+    if (sample) {
+      tab = sample.cloneNode(true);
+      tab.classList.remove("is-active");
+      tab.dataset.tab = "capital";
+      tab.textContent = "💰 Капитал";
+    } else {
+      tab = document.createElement("button");
+      tab.className = "tab";
+      tab.dataset.tab = "capital";
+      tab.textContent = "💰 Капитал";
+    }
+    container.appendChild(tab);
+    console.log("[Prosvet] ✓ Вкладка 'Капитал' создана в", container.className || container.tagName);
+    return tab;
+  }
+
   function ensureCapitalScreen() {
+    const miStart = document.getElementById("miStart");
+    if (!miStart) {
+      console.warn("[Prosvet] #miStart не найден в DOM на момент запуска.");
+      return;
+    }
+
+    const signals = document.getElementById("microSignalsContent");
+    const existing = document.querySelector('.screen[data-screen="capital"]');
+    if (existing && existing.contains(miStart)) {
+      return;
+    }
+
+    let widgetRoot = miStart.parentElement;
+    while (
+      widgetRoot &&
+      widgetRoot !== document.body &&
+      signals &&
+      !widgetRoot.contains(signals)
+    ) {
+      widgetRoot = widgetRoot.parentElement;
+    }
+    if (!widgetRoot || widgetRoot === document.body) {
+      widgetRoot = miStart.parentElement;
+    }
+    if (!widgetRoot) {
+      console.warn("[Prosvet] Не найден widgetRoot для виджета капитала.");
+      return;
+    }
+
+    const capitalScreen = document.createElement("section");
+    capitalScreen.className = "screen";
+    capitalScreen.dataset.screen = "capital";
+
+    const h2 = document.createElement("h2");
+    h2.textContent = "Мой первый капитал";
+    h2.style.marginBottom = "16px";
+
+    widgetRoot.parentNode.insertBefore(capitalScreen, widgetRoot);
+    capitalScreen.appendChild(h2);
+    capitalScreen.appendChild(widgetRoot);
+    console.log("[Prosvet] ✓ Виджет перемещён в экран data-screen=capital");
+  }
+
+  // Вызываем ДО сбора screens/tabs
+  ensureCapitalScreen();
+  ensureCapitalTab();
     const miStart = document.getElementById("miStart");
     if (!miStart) return;
 
